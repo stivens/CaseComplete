@@ -4,6 +4,7 @@ A Scala 3 library that provides compile-time guarantees for complete case class 
 
 ![CaseComplete Demo - Compile-time field validation](screenshots/casecomplete.gif "CaseComplete in action")
 
+
 ## Features
 
 - **Compile-time Safety**: Ensures all case class fields have corresponding handlers
@@ -13,7 +14,7 @@ A Scala 3 library that provides compile-time guarantees for complete case class 
 
 ## Installation
 
-![Maven Central Version](https://img.shields.io/maven-central/v/io.github.stivens/casecomplete_3?strategy=highestVersion&style=social)
+[![Maven Central](https://maven-badges.sml.io/sonatype-central/io.github.stivens/casecomplete_3/badge.svg?style=social)](https://maven-badges.sml.io/sonatype-central/io.github.stivens/casecomplete_3)
 
 Add CaseComplete to your `build.sbt`:
 
