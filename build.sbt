@@ -41,18 +41,10 @@ scalacOptions ++= Seq(
   "-Xfatal-warnings"
 )
 
-val DoobieVersion = "1.0.0-RC10"
-
 libraryDependencies ++= Seq(
   // scalatest
   "org.scalactic" %% "scalactic" % "3.2.19",
-  "org.scalatest" %% "scalatest" % "3.2.19" % "test",
-  // doobie
-  "org.tpolecat" %% "doobie-core"           % DoobieVersion,
-  "org.tpolecat" %% "doobie-postgres"       % DoobieVersion,
-  "org.tpolecat" %% "doobie-postgres-circe" % DoobieVersion,
-  "org.tpolecat" %% "doobie-hikari"         % DoobieVersion,
-  "org.tpolecat" %% "doobie-refined"        % DoobieVersion
+  "org.scalatest" %% "scalatest" % "3.2.19" % "test"
 )
 
 lazy val root = project
