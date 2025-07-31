@@ -14,9 +14,9 @@ A Scala 3 library that provides compile-time guarantees for complete case class 
 
 ## Installation
 
-Add CaseComplete to your `build.sbt`:
-
 ![Maven Central Version](https://img.shields.io/maven-central/v/io.github.stivens/casecomplete_3?strategy=highestVersion&style=social)
+
+Add CaseComplete to your `build.sbt`:
 
 ```scala
 libraryDependencies += "io.github.stivens" %% "casecomplete" % "0.1.0"
