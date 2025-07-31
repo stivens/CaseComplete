@@ -1,0 +1,29 @@
+name: CI
+
+on:
+    push:
+      branches:
+        - main
+    pull_request:
+    workflow_call:
+
+jobs:
+    ci:
+        name: Compile and test CaseComplete
+        runs-on: ubuntu-latest
+        steps:
+            - name: Setup JDK 21, Scala, SBT
+              uses: actions/setup-java@v4
+              with:
+                distribution: 'temurin'
+                java-version: '21'
+                cache: 'sbt'
+            - name: Setup SBT
+              uses: sbt/setup-sbt@v1
+            - name: Compile (main & tests)
+              shell: bash
+              run: sbt 'compile; Test / compile'
+            - name: Unit tests
+              shell: bash
+              run: sbt test
+
