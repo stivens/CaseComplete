@@ -7,9 +7,8 @@ A Scala 3 library that provides compile-time guarantees for complete case class 
 ## Features
 
 - **Compile-time Safety**: Ensures all case class fields have corresponding handlers
-- **Type-safe Field Selection**: Uses field selectors like `_.fieldName` for type safety
 - **Optional Field Support**: Built-in support for `Option` fields with `usingNonEmpty`
-- **Builder Pattern**: Fluent API for building field handlers
+- **Builder Pattern**: Fluent API for building handlers
 - **Macro-based**: Leverages Scala 3 macros for compile-time validation
 
 ## Installation
