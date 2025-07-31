@@ -2,6 +2,8 @@
 
 A Scala 3 library that provides compile-time guarantees for complete case class field handling. CaseComplete ensures that all fields of a case class are processed by your transformation logic, preventing runtime errors from forgotten fields.
 
+![CaseComplete Demo - Compile-time field validation](screenshots/casecomplete.gif "CaseComplete in action")
+
 ## Features
 
 - **Compile-time Safety**: Ensures all case class fields have corresponding handlers
@@ -12,11 +14,7 @@ A Scala 3 library that provides compile-time guarantees for complete case class 
 
 ## Installation
 
-Add CaseComplete to your `build.sbt`:
-
-```scala
-libraryDependencies += "io.github.stivens" %% "casecomplete" % "0.1.0"
-```
+This library is not yet published to any package repository
 
 ## Quick Start
 
