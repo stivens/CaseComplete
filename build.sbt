@@ -1,3 +1,9 @@
+import xerial.sbt.Sonatype.sonatypeCentralHost
+
+sonatypeCredentialHost := sonatypeCentralHost
+
+publishTo := sonatypePublishToBundle.value
+
 organization := "io.github.stivens"
 name         := "CaseComplete"
 homepage     := Some(url("https://github.com/stivens/CaseComplete"))
@@ -7,6 +13,7 @@ scmInfo := Some(
     "scm:git@github.com:stivens/CaseComplete.git"
   )
 )
+licenses := Seq("MIT" -> url("https://github.com/stivens/CaseComplete/blob/main/LICENSE"))
 developers := List(
   Developer(
     id = "stivens",
@@ -16,7 +23,7 @@ developers := List(
   )
 )
 
-version := "0.1.0-SNAPSHOT"
+version := "0.1.0"
 
 scalaVersion := "3.3.6"
 
