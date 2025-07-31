@@ -12,6 +12,7 @@ jobs:
         name: Compile and test CaseComplete
         runs-on: ubuntu-latest
         steps:
+            - uses: actions/checkout@v4
             - name: Setup JDK 21, Scala, SBT
               uses: actions/setup-java@v4
               with:
