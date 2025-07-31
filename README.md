@@ -65,7 +65,8 @@ CaseComplete uses Scala 3's macro system to:
 Creates a new builder instance:
 
 ```scala
-CaseComplete.build[SourceType, TargetType]
+object CaseComplete {
+  def build[SOURCE_TYPE <: Product, TARGET_TYPE]: CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, EmptyTuple]
 ```
 
 ### Builder Methods
