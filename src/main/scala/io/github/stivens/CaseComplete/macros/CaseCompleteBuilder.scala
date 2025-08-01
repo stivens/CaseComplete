@@ -1,23 +1,8 @@
 package io.github.stivens.casecomplete.macros
 
-import io.github.stivens.casecomplete.CaseComplete
+import io.github.stivens.casecomplete.*
 
 import scala.quoted.*
-
-/**
- * Implementation of CaseComplete that stores handlers in a Map and evaluates them in sorted order.
- * 
- * This class is used internally by the CaseCompleteBuilder to create the final CaseComplete instance
- * after all field handlers have been registered.
- */
-private class CaseCompleteImpl[SOURCE_TYPE <: Product, TARGET_TYPE](
-    handlers: Map[String, SOURCE_TYPE => TARGET_TYPE]
-) extends CaseComplete[SOURCE_TYPE, TARGET_TYPE] {
-  def eval(source: SOURCE_TYPE): List[TARGET_TYPE] =
-    handlers.toList
-      .sortBy { case (fieldName, _) => fieldName }
-      .map { case (_, handler) => handler(source) }
-}
 
 /**
    * Builder class for creating CaseComplete instances with compile-time field completeness checking.
