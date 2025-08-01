@@ -19,7 +19,7 @@ A Scala 3 library that provides compile-time guarantees for complete case class 
 Add CaseComplete to your `build.sbt`:
 
 ```scala
-libraryDependencies += "io.github.stivens" %% "casecomplete" % "0.1.0"
+libraryDependencies += "io.github.stivens" %% "casecomplete" % "0.2.1"
 ```
 
 ## Quick Start
