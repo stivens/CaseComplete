@@ -11,12 +11,12 @@ class CaseCompleteSpec extends AnyFunSpec {
       case class MovieFilter(
           title_like: Option[String] = None,
           director_eq: Option[String] = None,
-          releaseYear: Option[Year] = None,
+          releaseYear_eq: Option[Year] = None,
           rating_gte: Option[Double] = None
       )
 
       val filter = MovieFilter(
-        releaseYear = Some(Year.of(1999)),
+        releaseYear_eq = Some(Year.of(1999)),
         rating_gte = Some(7.0)
       )
       val expectedResult = Set("releaseYear = 1999", "rating >= 7.0")
@@ -27,26 +27,26 @@ class CaseCompleteSpec extends AnyFunSpec {
         val movieFilterHandler = buildMovieFilterHandler
           .using(_.title_like)(_.map(title => f"title ILIKE $title"))
           .using(_.director_eq)(_.map(director => f"director = $director"))
-          .using(_.releaseYear)(_.map(releaseYear => f"releaseYear = $releaseYear"))
+          .using(_.releaseYear_eq)(_.map(releaseYear => f"releaseYear = $releaseYear"))
           .using(_.rating_gte)(_.map(rating => f"rating >= $rating"))
           .compile
 
-        val avaulated = movieFilterHandler.eval(filter).toSet.flatten
+        val evaulated = movieFilterHandler.eval(filter).toSet.flatten
 
-        assert(avaulated == expectedResult)
+        assert(evaulated == expectedResult)
       }
 
       it("should properly use all the non-empty optional fields of the source type and compile") {
         val movieFilterHandler = buildMovieFilterHandler
           .usingNonEmpty(_.title_like)(title => f"title ILIKE $title")
           .usingNonEmpty(_.director_eq)(director => f"director = $director")
-          .usingNonEmpty(_.releaseYear)(releaseYear => f"releaseYear = $releaseYear")
+          .usingNonEmpty(_.releaseYear_eq)(releaseYear => f"releaseYear = $releaseYear")
           .usingNonEmpty(_.rating_gte)(rating => f"rating >= $rating")
           .compile
 
-        val avaulated = movieFilterHandler.eval(filter).toSet.flatten
+        val evaulated = movieFilterHandler.eval(filter).toSet.flatten
 
-        assert(avaulated == expectedResult)
+        assert(evaulated == expectedResult)
       }
     }
 
@@ -55,7 +55,7 @@ class CaseCompleteSpec extends AnyFunSpec {
       case class MovieFilter(
           title_like: Option[String] = None,
           director_eq: Option[String] = None,
-          releaseYear: Option[Year] = None,
+          releaseYear_eq: Option[Year] = None,
           rating_gte: Option[Double] = None
       ) {
         lazy val isEmpty: Boolean = this == MovieFilter.empty
@@ -72,7 +72,7 @@ class CaseCompleteSpec extends AnyFunSpec {
         val movieFilterHandler = buildMovieFilterHandler
           .using(_.title_like)(_ => None)
           .using(_.director_eq)(_ => None)
-          .using(_.releaseYear)(_ => None)
+          .using(_.releaseYear_eq)(_ => None)
           .using(_.rating_gte)(_ => None)
           .compile
 
