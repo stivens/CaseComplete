@@ -1,6 +1,6 @@
-package io.github.stivens.CaseComplete.macros
+package io.github.stivens.casecomplete.macros
 
-import io.github.stivens.CaseComplete.CaseComplete
+import io.github.stivens.casecomplete.CaseComplete
 
 import scala.quoted.*
 

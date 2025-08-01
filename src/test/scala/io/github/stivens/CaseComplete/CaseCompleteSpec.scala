@@ -1,4 +1,4 @@
-package io.github.stivens.CaseComplete
+package io.github.stivens.casecomplete
 
 import org.scalatest.funspec.AnyFunSpec
 

@@ -1,6 +1,6 @@
-package io.github.stivens.CaseComplete
+package io.github.stivens.casecomplete
 
-import io.github.stivens.CaseComplete.macros.CaseCompleteBuilder
+import io.github.stivens.casecomplete.macros.CaseCompleteBuilder
 
 trait CaseComplete[SOURCE_TYPE <: Product, TARGET_TYPE] {
   def eval(source: SOURCE_TYPE): List[TARGET_TYPE]

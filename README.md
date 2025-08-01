@@ -25,14 +25,14 @@ libraryDependencies += "io.github.stivens" %% "casecomplete" % "0.1.0"
 ## Quick Start
 
 ```scala
-import io.github.stivens.CaseComplete.CaseComplete
+import io.github.stivens.casecomplete.CaseComplete
 
 import doobie.*
 
 case class MovieFilter(
   title_like: Option[String] = None,
   director_eq: Option[String] = None,
-  releaseYear: Option[Year] = None,
+  releaseYear_eq: Option[Year] = None,
   rating_gte: Option[Double] = None
 )
 
@@ -40,13 +40,13 @@ case class MovieFilter(
 val movieFilterHandler = CaseComplete.build[MovieFilter, Option[Fragment]]
   .usingNonEmpty(_.title_like)(title => fr"title ILIKE $title")
   .usingNonEmpty(_.director_eq)(director => fr"director = $director")
-  .usingNonEmpty(_.releaseYear)(year => fr"release_year = $year")
+  .usingNonEmpty(_.releaseYear_eq)(year => fr"release_year = $year")
   .usingNonEmpty(_.rating_gte)(rating => fr"rating >= $rating")
   .compile
 
 // Use the handler
 val filter = MovieFilter(
-  releaseYear = Some(Year.of(1999)),
+  releaseYear_eq = Some(Year.of(1999)),
   rating_gte = Some(7.0)
 )
 
