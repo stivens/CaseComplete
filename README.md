@@ -95,13 +95,16 @@ case class MovieUpdate(
 object MovieRepository extends AbstractRepository[Movie, MovieFilter, MovieUpdate] (
   tableName = "movies",
   evalFilter = {
-    case MovieFilter(title_like, director_eq, releaseYear_eq, rating_gte) => List(
+    case MovieFilter(director_eq, title_like, releaseYear_eq, rating_gte) => List(
       title_like.map(title => fr"title ILIKE $title"),
       director_eq.map(director => fr"director = $director"),
       releaseYear_eq.map(year => fr"release_year = $year"),
       rating_gte.map(rating => fr"rating >= $rating")
     ).flatten.toSet
-  }, // This is good - we'll have to extend pattern matching if fields are added
+  }, // This looks good at first glance, but notice the order mismatch:
+  // - Pattern has: director_eq, title_like, releaseYear_eq, rating_gte
+  // - Usage has: title_like, director_eq, releaseYear_eq, rating_gte
+  // This will cause runtime bugs: fr"title ILIKE 'some director name'" and fr"director = 'some movie title'"
   evalUpdate = update => {
     List(
       update.title.map(title => fr"title = $title"),
