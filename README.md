@@ -62,6 +62,89 @@ CaseComplete uses Scala 3's macro system to:
 2. **Compile-time Validation**: When you call `.compile()`, it verifies all case class fields have handlers
 3. **Field Name Extraction**: Extracts field names from selectors like `_.fieldName` at compile time
 
+## CaseComplete vs Pattern Matching
+
+While pattern matching on case classes is a powerful Scala feature, it has limitations when it comes to ensuring complete field handling. CaseComplete provides **dual-purpose functionality**: it not only allows you to implement transformations that are validated at compile-time, but also provides an interface that guarantees every implementation will have these properties.
+
+### The Problem with Pattern Matching
+
+Pattern matching on case classes is just a specific implementation of `A => B` functions. **You cannot enforce the use of pattern matching at the interface level** - the interface only specifies the function signature, not how it should be implemented. This means there's no compile-time guarantee that all fields will be handled.
+
+```scala
+abstract class AbstractRepository[ENTITY_TYPE, FILTER_TYPE, UPDATE_TYPE](
+  tableName: String,
+  evalFilter: FILTER_TYPE => Set[Fragment],
+  evalUpdate: UPDATE_TYPE => Set[Fragment]
+) {
+  // some methods etc
+}
+
+case class MovieFilter(
+  title_like: Option[String] = None,
+  director_eq: Option[String] = None,
+  releaseYear_eq: Option[Year] = None,
+  rating_gte: Option[Double] = None
+)
+
+case class MovieUpdate(
+  title: Option[String],
+  rating: Option[Double],
+  cast: Option[List[Person]]
+)
+
+object MovieRepository extends AbstractRepository[Movie, MovieFilter, MovieUpdate] (
+  tableName = "movies",
+  evalFilter = {
+    case MovieFilter(title_like, director_eq, releaseYear_eq, rating_gte) => List(
+      title_like.map(title => fr"title ILIKE $title"),
+      director_eq.map(director => fr"director = $director"),
+      releaseYear_eq.map(year => fr"release_year = $year"),
+      rating_gte.map(rating => fr"rating >= $rating")
+    ).flatten.toSet
+  }, // This is good - we'll have to extend pattern matching if fields are added
+  evalUpdate = update => {
+    List(
+      update.title.map(title => fr"title = $title"),
+      update.cast.map(cast => fr"cast = $cast")
+    ).flatten.toSet
+  } // Whoops - the `rating` field is not handled, but it still compiles!
+)
+```
+
+### The CaseComplete Solution
+
+With CaseComplete, you can define the `AbstractRepository` to enforce complete field handling:
+
+```scala
+abstract class AbstractRepository[ENTITY_TYPE, FILTER_TYPE, UPDATE_TYPE](
+  tableName: String,
+  evalFilter: CaseComplete[FILTER_TYPE, Option[Fragment]],
+  evalUpdate: CaseComplete[UPDATE_TYPE, Option[Fragment]]
+) {
+  // some methods etc
+}
+```
+
+Now, providing an implementation that isn't validated at compile-time is **impossible**. All classes that inherit from `AbstractRepository` must provide implementations that handle every field:
+
+```scala
+object MovieRepository extends AbstractRepository[Movie, MovieFilter, MovieUpdate] (
+  tableName = "movies",
+  evalFilter = CaseComplete.build[MovieFilter, Option[Fragment]]
+    .usingNonEmpty(_.title_like)(title => fr"title ILIKE $title")
+    .usingNonEmpty(_.director_eq)(director => fr"director = $director")
+    .usingNonEmpty(_.releaseYear_eq)(year => fr"release_year = $year")
+    .usingNonEmpty(_.rating_gte)(rating => fr"rating >= $rating")
+    .compile,
+  evalUpdate = CaseComplete.build[MovieUpdate, Option[Fragment]]
+    .usingNonEmpty(_.title)(title => fr"title = $title")
+    .usingNonEmpty(_.rating)(rating => fr"rating = $rating")
+    .usingNonEmpty(_.cast)(cast => fr"cast = $cast")
+    .compile
+)
+```
+
+
 ## API Reference
 
 ### CaseComplete.build
