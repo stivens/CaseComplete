@@ -147,6 +147,35 @@ object MovieRepository extends AbstractRepository[Movie, MovieFilter, MovieUpdat
 )
 ```
 
+## Pro tip: Make interfaces more expressive with type aliases
+
+```scala
+type AsFragments[A <: Product] = CaseComplete[A, Option[Fragment]]
+def toFragments[A <: Product]: CaseCompleteBuilder[A, Option[Fragment], EmptyTuple] = CaseComplete.build[A, Option[Fragment]]
+
+
+abstract class AbstractRepository[ENTITY_TYPE, FILTER_TYPE, UPDATE_TYPE](
+  tableName: String,
+  evalFilter: AsFragments[FILTER_TYPE],
+  evalUpdate: AsFragments[UPDATE_TYPE]
+)
+
+object MovieRepository extends AbstractRepository[Movie, MovieFilter, MovieUpdate] (
+  tableName = "movies",
+  evalFilter = toFragments[MovieFilter]
+    .usingNonEmpty(_.title_like)(title => fr"title ILIKE $title")
+    .usingNonEmpty(_.director_eq)(director => fr"director = $director")
+    .usingNonEmpty(_.releaseYear_eq)(year => fr"release_year = $year")
+    .usingNonEmpty(_.rating_gte)(rating => fr"rating >= $rating")
+    .compile,
+  evalUpdate = toFragments[MovieUpdate]
+    .usingNonEmpty(_.title)(title => fr"title = $title")
+    .usingNonEmpty(_.rating)(rating => fr"rating = $rating")
+    .usingNonEmpty(_.cast)(cast => fr"cast = $cast")
+    .compile
+)
+```
+
 
 ## API Reference
 
