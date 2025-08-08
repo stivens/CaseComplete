@@ -277,7 +277,17 @@ object CaseCompleteBuilder {
     val missingFields = caseClassFields -- handledFields
 
     // If there are any missing fields, abort compilation with an error.
-    if missingFields.nonEmpty then report.errorAndAbort(s"Missing handlers for fields: ${missingFields.mkString(", ")}")
+    if missingFields.nonEmpty then report.errorAndAbort(s"""
+        |CaseComplete compilation failed: Missing handlers for ${missingFields.size} field(s) in class ${Type.show[SOURCE_TYPE]}.
+        |
+        |Missing handlers for fields: ${missingFields.mkString(", ")}
+        |
+        |To fix this, add handlers for the missing fields.
+        |Example:
+        |  CaseCompleteBuilder[${Type.show[SOURCE_TYPE]}, ?]
+        |    .using(_.${missingFields.head})(value => /* your handler logic */)
+        |    // ... other handlers
+        |    .compile""")
 
     // If all checks pass, generate the code for the final HandleAllFieldsImpl instance.
     '{ new CaseCompleteImpl($builder.handlers) }
