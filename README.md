@@ -239,7 +239,7 @@ val result = handler.eval(sourceInstance)
 
 ## Requirements
 
-- Scala 3.x
+- Scala >= 3.3
 
 ## Contributing
 
