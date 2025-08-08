@@ -19,19 +19,19 @@ A Scala 3 library that provides compile-time guarantees for complete case class 
 `build.sbt`:
 
 ```scala
-libraryDependencies += "io.github.stivens" %% "casecomplete" % "0.2.1"
+libraryDependencies += "io.github.stivens" %% "casecomplete" % "0.2.2"
 ```
 
 `scala-cli`:
 
 ```scala
-//> using lib "io.github.stivens::casecomplete:0.2.1"
+//> using lib "io.github.stivens::casecomplete:0.2.2"
 ```
 
 `scala-cli REPL`:
 
 ```bash
-scala-cli repl --dep io.github.stivens::casecomplete:0.2.1
+scala-cli repl --dep io.github.stivens::casecomplete:0.2.2
 ```
 
 ## Quick Start
