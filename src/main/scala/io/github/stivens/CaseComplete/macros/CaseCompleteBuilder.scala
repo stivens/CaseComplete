@@ -203,6 +203,12 @@ object CaseCompleteBuilder {
       case None       => report.errorAndAbort(s"Illegal expression: ${fieldAsTerm.show}, expected a field selector, e.g. `_.foo`")
     }
 
+    // Check if this field has already been handled
+    val handledFields = getHandledFields(Type.of[Handled])
+    if handledFields.contains(fieldName) then {
+      report.errorAndAbort(s"Field '$fieldName' has already been handled. Each field can only be handled once.")
+    }
+
     val fieldNameSingletonTypeRepr = ConstantType(StringConstant(fieldName))
     val handledTupleTypeRepr       = TypeRepr.of[Handled]
     val AppliedType(tycon, _)      = TypeRepr.of[*:[?, ?]]: @unchecked
@@ -262,24 +268,6 @@ object CaseCompleteBuilder {
   )(using q: Quotes): Expr[CaseComplete[SOURCE_TYPE, TARGET_TYPE]] = {
     import q.reflect.*
 
-    /**
-     * Recursively unpacks the tuple type to get a Set of handled field names.
-     * 
-     * This function traverses the `Handled` type parameter, which is a tuple of
-     * singleton string types representing the field names that have been handled.
-     * 
-     * @param t The tuple type to unpack
-     * @return A Set containing all the field names that have been handled
-     */
-    def getHandledFields(t: Type[?]): Set[String] = t match {
-      case '[EmptyTuple] => Set.empty
-      case '[(head *: tail)] =>
-        val headStr = Type.valueOfConstant[head].get.asInstanceOf[String]
-        getHandledFields(Type.of[tail]) + headStr
-      case _ =>
-        report.errorAndAbort(s"Internal error: HandledFields type was not a tuple: ${Type.show[Handled]}")
-    }
-
     // Get the set of fields handled so far from the `Handled` type parameter.
     val handledFields = getHandledFields(Type.of[Handled])
     // Get the set of all fields defined on the case class `A`.
@@ -293,5 +281,26 @@ object CaseCompleteBuilder {
 
     // If all checks pass, generate the code for the final HandleAllFieldsImpl instance.
     '{ new CaseCompleteImpl($builder.handlers) }
+  }
+
+  /**
+   * Recursively unpacks the tuple type to get a Set of handled field names.
+   * 
+   * This function traverses the `Handled` type parameter, which is a tuple of
+   * singleton string types representing the field names that have been handled.
+   * 
+   * @param t The tuple type to unpack
+   * @return A Set containing all the field names that have been handled
+   */
+  private def getHandledFields(t: Type[?])(using q: Quotes): Set[String] = {
+    import q.reflect.*
+    t match {
+      case '[EmptyTuple] => Set.empty
+      case '[(head *: tail)] =>
+        val headStr = Type.valueOfConstant[head].get.asInstanceOf[String]
+        getHandledFields(Type.of[tail]) + headStr
+      case _ =>
+        report.errorAndAbort(s"Internal error: HandledFields type was not a tuple.")
+    }
   }
 }
