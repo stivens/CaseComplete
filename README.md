@@ -204,7 +204,7 @@ object CaseComplete {
 
 ### Builder Methods
 
-#### `using(field)(handler)`
+#### `using(_.field)(handler)`
 
 Registers a handler for a specific field:
 
@@ -212,7 +212,7 @@ Registers a handler for a specific field:
 builder.using(_.fieldName)(value => transformedValue)
 ```
 
-#### `usingNonEmpty(field)(handler)` (for Option fields)
+#### `usingNonEmpty(_.field)(handler)` (for Option fields)
 
 Registers a handler for optional fields, automatically handling `None`:
 
@@ -220,6 +220,16 @@ Registers a handler for optional fields, automatically handling `None`:
 builder.usingNonEmpty(_.optionalField)(value => transformedValue)
 // equivalant to builder.using(_.optionalField)((_: Option[F]).map((value: F) => transformedValue))
 ```
+
+#### `ignoring(_.field)`
+
+Explicitly marks a field as ignored during processing. This is useful when you want to intentionally skip a field (e.g., deprecated fields) while ensuring compile-time validation that you didn't forget to handle it:
+
+```scala
+builder.ignoring(_.deprecatedField)
+```
+
+**Why use `ignoring`?** When you have fields that you intentionally don't want to process (like deprecated fields, internal fields, or fields that don't apply to your use case), `ignoring` provides a clear, explicit way to indicate this intention. It guarantees that you made a conscious decision to ignore the field rather than accidentally forgetting to handle it.
 
 #### `compile`
 

@@ -48,6 +48,19 @@ class CaseCompleteSpec extends AnyFunSpec {
 
         assert(evaulated == expectedResult)
       }
+
+      it("should allow to explicitly ignore a field") {
+        val movieFilterHandler = buildMovieFilterHandler
+          .ignoring(_.title_like)
+          .ignoring(_.director_eq)
+          .ignoring(_.releaseYear_eq)
+          .ignoring(_.rating_gte)
+          .compile
+
+        val evaulated = movieFilterHandler.eval(filter).toSet.flatten
+
+        assert(evaulated == Set.empty)
+      }
     }
 
     describe("when given a source type with value which is not defined in the primary constructor") {

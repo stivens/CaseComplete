@@ -62,7 +62,28 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
   )(
       handler: FIELD => TARGET_TYPE
   ): CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?] = // The '?' hides the complex result type from the user
-    ${ CaseCompleteBuilder.usingImpl('this, 'field, 'handler) }
+    ${ CaseCompleteBuilder.usingImpl('this, 'field, '{ Some(handler) }) }
+
+  /**
+   * Explicitly ignores a specific field of the source case class.
+   * 
+   * This method marks a field as handled without creating a handler for it. This is useful
+   * when you want to explicitly indicate that a field should be ignored during processing.
+   * The field selector must be a simple field access expression like `_.fieldName`.
+   * 
+   * @param field A field selector function that extracts a field from the source type
+   * @tparam FIELD The type of the field being ignored
+   * @return A new CaseCompleteBuilder with the updated type tracking (no handler added)
+   * 
+   * @example
+   * {{{
+   * builder.ignoring(_.deprecatedField)
+   * }}}
+   */
+  transparent inline def ignoring[FIELD](
+      inline field: SOURCE_TYPE => FIELD
+  ): CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?] = // The '?' hides the complex result type from the user
+    ${ CaseCompleteBuilder.usingImpl('this, 'field, '{ None }) }
 
   /**
    * Compiles the handler, verifying at compile time that all fields have been handled.
@@ -169,7 +190,7 @@ object CaseCompleteBuilder {
   ](
       builder: Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, Handled]],
       field: Expr[SOURCE_TYPE => FIELD],
-      fieldHandler: Expr[FIELD => TARGET_TYPE]
+      fieldHandler: Expr[Option[FIELD => TARGET_TYPE]]
   )(using q: Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] = {
     import q.reflect.*
 
@@ -230,7 +251,11 @@ object CaseCompleteBuilder {
         val builderTypeTree = Applied(TypeIdent(builderSymbol), List(typeSource_TT, typeTarget_TT, typeHandled_TT))
 
         // Construct the expression for the `newHandlers` map argument
-        val newHandlersExpr = '{ $builder.handlers + (${ Expr(fieldName) } -> ((s: SOURCE_TYPE) => $fieldHandler($field(s)))) }
+        val newHandlersExpr = '{
+          $fieldHandler.fold($builder.handlers) { someFieldHandler =>
+            $builder.handlers + (${ Expr(fieldName) } -> ((s: SOURCE_TYPE) => someFieldHandler($field(s))))
+          }
+        }
 
         // Build the `new HandleAllFieldsBuilder[A, B, t](newHandlers)` expression tree
         val newBuilderTerm = Apply(
