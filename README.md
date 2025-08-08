@@ -16,10 +16,22 @@ A Scala 3 library that provides compile-time guarantees for complete case class 
 
 [![Maven Central](https://maven-badges.sml.io/sonatype-central/io.github.stivens/casecomplete_3/badge.svg?style=social)](https://maven-badges.sml.io/sonatype-central/io.github.stivens/casecomplete_3)
 
-Add CaseComplete to your `build.sbt`:
+`build.sbt`:
 
 ```scala
 libraryDependencies += "io.github.stivens" %% "casecomplete" % "0.2.1"
+```
+
+`scala-cli`:
+
+```scala
+//> using lib "io.github.stivens::casecomplete:0.2.1"
+```
+
+`scala-cli REPL`:
+
+```bash
+scala-cli repl --dep io.github.stivens::casecomplete:0.2.1
 ```
 
 ## Quick Start
@@ -28,6 +40,8 @@ libraryDependencies += "io.github.stivens" %% "casecomplete" % "0.2.1"
 import io.github.stivens.casecomplete.CaseComplete
 
 import doobie.*
+
+import java.time.Year
 
 case class MovieFilter(
   title_like: Option[String] = None,
