@@ -23,7 +23,7 @@ developers := List(
   )
 )
 
-version := "0.2.2"
+version := "0.3.0"
 
 scalaVersion := "3.3.8"
 

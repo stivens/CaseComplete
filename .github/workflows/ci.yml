@@ -11,6 +11,9 @@ jobs:
     ci:
         name: Compile and test CaseComplete
         runs-on: ubuntu-latest
+        # LongChainSpec guards against a compile-time blowup, so it fails by hanging rather than by
+        # an assertion. Without this it would hang for GitHub's 360-minute default.
+        timeout-minutes: 15
         steps:
             - uses: actions/checkout@v4
             - name: Setup JDK 21, Scala, SBT

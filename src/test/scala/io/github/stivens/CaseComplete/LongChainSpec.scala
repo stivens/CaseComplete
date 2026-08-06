@@ -9,8 +9,8 @@ import org.scalatest.funspec.AnyFunSpec
  * in posttyper and 20 steps spent 54 s, so the 32 steps below would take hours. Post-fix the whole
  * file costs ~0.25 s. All three chaining methods are interleaved because each is equally at risk.
  *
- * Note this fails by hanging rather than by a fast assertion, so it is only a usable CI signal once
- * the workflow sets a job `timeout-minutes`.
+ * This fails by hanging rather than by a fast assertion, which is why the CI job sets
+ * `timeout-minutes`.
  */
 class LongChainSpec extends AnyFunSpec {
 

@@ -36,12 +36,13 @@ import scala.quoted.*
    * @tparam TARGET_TYPE The target type that each field handler produces
    * @tparam Handled A tuple type representing the field names that have been handled so far
    */
-class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple](
-    val handlers: Map[String, SOURCE_TYPE => TARGET_TYPE]
+class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple] private[casecomplete] (
+    private[casecomplete] val handlers: Map[String, SOURCE_TYPE => TARGET_TYPE]
 ) {
 
-  // Package-private so users cannot forge a Handled claim for a field that has no handler. Quoted
-  // calls resolve at macro-definition site, so the generated code can still reach these.
+  // Package-private, together with the constructor, so users cannot forge a Handled claim for a field
+  // that has no handler. Quoted calls resolve at macro-definition site, so generated code still
+  // reaches these -- see ExternalAccessSpec.
   private[casecomplete] def addHandler[NewHandled <: Tuple](
       name: String,
       handler: SOURCE_TYPE => TARGET_TYPE
@@ -75,15 +76,14 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
   ): CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?] = // The '?' hides the complex result type from the user
     ${ CaseCompleteBuilder.usingImpl('this, 'field, 'handler) }
 
+  // Keep this and its sibling methods on the class. A `transparent inline` extension method binds its
+  // receiver to a parameter proxy carrying the refined type of the whole preceding chain, which makes
+  // compiling a chain exponential in its length -- see LongChainSpec.
   /**
    * Registers a handler for an optional field, automatically handling the None case.
    *
-   * Only available when the target type is an `Option`; the handler produces the `Option`'s payload
-   * and `None` fields map to `None`. Equivalent to `using(_.field)(_.map(handler))`.
-   *
-   * This must stay a method on the class. As a `transparent inline` extension method it binds its
-   * receiver to a parameter proxy carrying the refined type of the whole preceding chain, which makes
-   * compiling a chain exponential in its length -- see LongChainSpec.
+   * Equivalent to `using(_.field)(_.map(handler))`, and only available when the target type is an
+   * `Option`.
    *
    * @example
    * {{{
@@ -140,12 +140,6 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
     ${ CaseCompleteBuilder.compileImpl[SOURCE_TYPE, TARGET_TYPE, Handled]('this) }
 }
 
-/**
- * Companion object providing factory methods and extensions for CaseCompleteBuilder.
- * 
- * This object contains the main entry point for creating CaseCompleteBuilder instances
- * and provides extension methods for handling optional fields.
- */
 object CaseCompleteBuilder {
 
   /**
@@ -168,8 +162,6 @@ object CaseCompleteBuilder {
     new CaseCompleteBuilder(Map.empty[String, SOURCE_TYPE => TARGET_TYPE])
 
   /**
-   * The payload of an `Option` target type, used to type `usingNonEmpty`'s handler.
-   *
    * The `Any` fallback keeps this reducible for non-`Option` targets so that `usingNonEmptyImpl`
    * reports the mismatch; without it the user gets a raw "match type reduction failed" instead.
    */
@@ -241,13 +233,8 @@ object CaseCompleteBuilder {
     }
   }
 
-  /**
-   * Emits `builder.addHandler[fieldName *: Handled](fieldName, handler)`.
-   *
-   * `builder` is the whole preceding chain, so it must be spliced exactly once -- a second splice
-   * copies that tree. `t & Tuple` supplies the bound that a quoted type pattern cannot express
-   * before Scala 3.4.
-   */
+  // `builder` is the whole preceding chain, so it must be spliced exactly once -- a second splice
+  // copies that tree.
   private def addHandlerCall[
       SOURCE_TYPE <: Product: Type,
       TARGET_TYPE: Type,
@@ -293,6 +280,8 @@ object CaseCompleteBuilder {
     }
   }
 
+  // Returns an unbounded `Type[?]` because a quoted type pattern cannot express `<: Tuple` before
+  // Scala 3.4; call sites recover the bound with `t & Tuple`.
   private def newHandledType[Handled <: Tuple: Type](fieldName: String)(using q: Quotes): Type[?] = {
     import q.reflect.*
     ConstantType(StringConstant(fieldName)).asType match {
@@ -349,23 +338,23 @@ object CaseCompleteBuilder {
   }
 
   /**
-   * Recursively unpacks the tuple type to get a Set of handled field names.
-   * 
-   * This function traverses the `Handled` type parameter, which is a tuple of
-   * singleton string types representing the field names that have been handled.
-   * 
-   * @param t The tuple type to unpack
-   * @return A Set containing all the field names that have been handled
+   * Unpacks `Handled` -- a tuple of singleton string types -- into the set of field names it records.
+   *
+   * Decoded structurally rather than with quoted type patterns (`'[head *: tail]`): every chain step
+   * walks the whole accumulated tuple, so this is quadratic over a chain, and the type comparer those
+   * patterns invoke made it ~10% of typer time at 96 fields.
    */
   private def getHandledFields(t: Type[?])(using q: Quotes): Set[String] = {
     import q.reflect.*
-    t match {
-      case '[EmptyTuple] => Set.empty
-      case '[(head *: tail)] =>
-        val headStr = Type.valueOfConstant[head].get.asInstanceOf[String]
-        getHandledFields(Type.of[tail]) + headStr
-      case _ =>
-        report.errorAndAbort(s"Internal error: HandledFields type was not a tuple.")
+
+    def loop(repr: TypeRepr, acc: Set[String]): Set[String] = repr.dealias match {
+      case AndType(left, _) => loop(left, acc) // the `t & Tuple` bound recovered at the call sites
+      case AppliedType(tycon, List(ConstantType(StringConstant(name)), tail)) if tycon.typeSymbol.name == "*:" =>
+        loop(tail, acc + name)
+      case empty if empty =:= TypeRepr.of[EmptyTuple] => acc
+      case other => report.errorAndAbort(s"Internal error: HandledFields type was not a tuple: ${other.show}")
     }
+
+    loop(TypeRepr.of(using t), Set.empty)
   }
 }
