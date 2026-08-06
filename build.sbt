@@ -25,7 +25,7 @@ developers := List(
 
 version := "0.2.2"
 
-scalaVersion := "3.3.6"
+scalaVersion := "3.3.8"
 
 resolvers += "shibboleth-releases" at "https://build.shibboleth.net/maven/releases"
 resolvers += Resolver.sonatypeCentralSnapshots
