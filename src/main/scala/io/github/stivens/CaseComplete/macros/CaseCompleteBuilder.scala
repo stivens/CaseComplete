@@ -157,8 +157,6 @@ object CaseCompleteBuilder {
 
   // Owns the shared pipeline -- selector extraction, duplicate check, emit under the extended
   // `Handled` type -- so a new validation or a change to the type encoding lands in one place.
-  // A quoted type pattern cannot express `<: Tuple` before Scala 3.4, hence the unbounded `'[t]`
-  // with the bound recovered as `t & Tuple`; getHandledFields strips that intersection back off.
   private def registerField[
       SOURCE_TYPE <: Product: Type,
       TARGET_TYPE: Type,
@@ -171,16 +169,15 @@ object CaseCompleteBuilder {
     import q.reflect.*
 
     val fieldName = extractFieldNameOrAbort(field)
-    checkNotAlreadyHandled[Handled](fieldName)
+    if getHandledFields[Handled].contains(fieldName) then {
+      report.errorAndAbort(s"Field '$fieldName' has already been handled. Each field can only be handled once.")
+    }
 
     ConstantType(StringConstant(fieldName)).asType match {
       case '[name] =>
-        Type.of[name *: Handled] match {
-          case '[t] =>
-            handler match {
-              case Some(h) => '{ $builder.addHandler[t & Tuple](${ Expr(fieldName) }, $h) }
-              case None    => '{ $builder.markHandled[t & Tuple] }
-            }
+        handler match {
+          case Some(h) => '{ $builder.addHandler[name *: Handled](${ Expr(fieldName) }, $h) }
+          case None    => '{ $builder.markHandled[name *: Handled] }
         }
     }
   }
@@ -188,37 +185,20 @@ object CaseCompleteBuilder {
   private def extractFieldNameOrAbort(field: Expr[?])(using q: Quotes): String = {
     import q.reflect.*
 
-    def strip(term: Term): Term = term match {
-      case Inlined(_, _, inner) => strip(inner)
-      case Typed(inner, _)      => strip(inner)
-      case Block(Nil, inner)    => strip(inner)
-      case _                    => term
-    }
-
     // The receiver must be the lambda's own parameter: accepting any Select would let `_.a.b`
     // register the *source type's* field "b" and silently defeat the completeness check.
-    def extractFieldName(term: Term): Option[String] = strip(term) match {
-      case Block(List(defdef @ DefDef(_, _, _, Some(body))), _) =>
-        val params = defdef.termParamss.flatMap(_.params).map(_.symbol)
-        strip(body) match {
-          case Select(receiver: Ident, name) if params.contains(receiver.symbol) => Some(name)
-          case _                                                                 => None
+    val fieldName = field.asTerm.underlyingArgument match {
+      case Lambda(List(param), body) =>
+        body.underlyingArgument match {
+          case Select(receiver: Ident, name) if receiver.symbol == param.symbol => Some(name)
+          case _                                                                => None
         }
       case _ => None
     }
 
-    val fieldAsTerm = field.asTerm
-    extractFieldName(fieldAsTerm) match {
-      case Some(name) => name
-      case None       => report.errorAndAbort(s"Illegal expression: ${fieldAsTerm.show}, expected a field selector, e.g. `_.foo`")
-    }
-  }
-
-  private def checkNotAlreadyHandled[Handled <: Tuple: Type](fieldName: String)(using q: Quotes): Unit = {
-    import q.reflect.*
-    if getHandledFields[Handled].contains(fieldName) then {
-      report.errorAndAbort(s"Field '$fieldName' has already been handled. Each field can only be handled once.")
-    }
+    fieldName.getOrElse(
+      report.errorAndAbort(s"Illegal expression: ${field.asTerm.show}, expected a field selector, e.g. `_.foo`")
+    )
   }
 
   def compileImpl[
@@ -260,7 +240,6 @@ object CaseCompleteBuilder {
     val emptyTupleSymbol = TypeRepr.of[EmptyTuple].dealias.typeSymbol
 
     def loop(repr: TypeRepr, acc: Set[String]): Set[String] = repr.dealias match {
-      case AndType(left, _) => loop(left, acc) // strips the `t & Tuple` emitted by registerField
       case AppliedType(tycon, List(ConstantType(StringConstant(name)), tail)) if tycon.typeSymbol == consSymbol =>
         loop(tail, acc + name)
       case empty if empty.typeSymbol == emptyTupleSymbol => acc

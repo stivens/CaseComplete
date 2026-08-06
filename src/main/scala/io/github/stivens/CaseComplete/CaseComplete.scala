@@ -15,10 +15,8 @@ private[casecomplete] class CaseCompleteImpl[SOURCE_TYPE <: Product, TARGET_TYPE
     handlers: Map[String, SOURCE_TYPE => TARGET_TYPE]
 ) extends CaseComplete[SOURCE_TYPE, TARGET_TYPE] {
   private val sortedHandlers: List[SOURCE_TYPE => TARGET_TYPE] =
-    handlers.toList
-      .sortBy { case (fieldName, _) => fieldName }
-      .map { case (_, handler) => handler }
+    handlers.toList.sortBy(_._1).map(_._2)
 
   def eval(source: SOURCE_TYPE): List[TARGET_TYPE] =
-    sortedHandlers.map(handler => handler(source))
+    sortedHandlers.map(_(source))
 }
