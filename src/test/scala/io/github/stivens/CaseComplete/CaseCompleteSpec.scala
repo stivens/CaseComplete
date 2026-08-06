@@ -112,9 +112,8 @@ class CaseCompleteSpec extends AnyFunSpec {
         """)
       }
 
-      // Asserted on the message text, not just on failure: each of these messages exists only to be
-      // read, so a test that accepts any compile error would not notice it degrading into the raw
-      // compiler diagnostic it was written to replace.
+      // These assert the message text, not just failure: the messages exist to be read, and a
+      // failure-only test would not notice them degrading into raw compiler diagnostics.
       it("should report the unhandled field when one has no handler") {
         val errors = typeCheckErrors("""
           CaseComplete.build[TwoFieldFilter, Option[String]]
@@ -148,6 +147,15 @@ class CaseCompleteSpec extends AnyFunSpec {
         val errors = typeCheckErrors("""
           CaseComplete.build[TwoFieldFilter, String]
             .usingNonEmpty(_.a)(value => value)
+        """)
+
+        assert(errors.exists(_.message.contains("usingNonEmpty requires the target type to be an Option")))
+      }
+
+      it("should reject a target type that is a strict subtype of Option") {
+        val errors = typeCheckErrors("""
+          CaseComplete.build[TwoFieldFilter, Some[String]]
+            .usingNonEmpty(_.a)(identity)
         """)
 
         assert(errors.exists(_.message.contains("usingNonEmpty requires the target type to be an Option")))

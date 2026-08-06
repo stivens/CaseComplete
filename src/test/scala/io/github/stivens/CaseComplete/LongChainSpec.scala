@@ -3,14 +3,12 @@ package io.github.stivens.casecomplete
 import org.scalatest.funspec.AnyFunSpec
 
 /**
- * Compile-time regression guard for the blowup described on `CaseCompleteBuilder.usingNonEmpty`.
+ * Regression guard for the compile-time blowup described on `CaseCompleteBuilder.usingNonEmpty`:
+ * pre-fix the cost was ~1.9x per chain step (16 steps: 4.0 s of posttyper; 20 steps: 54 s), so the
+ * 32 steps below would take hours; post-fix the file costs ~0.25 s. All three chaining methods are
+ * interleaved because each is equally at risk.
  *
- * Chaining `transparent inline` extension methods costs ~1.9x per step: pre-fix, 16 steps spent 4.0 s
- * in posttyper and 20 steps spent 54 s, so the 32 steps below would take hours. Post-fix the whole
- * file costs ~0.25 s. All three chaining methods are interleaved because each is equally at risk.
- *
- * This fails by hanging rather than by a fast assertion, which is why the CI job sets
- * `timeout-minutes`.
+ * A regression fails by hanging, not by assertion -- hence `timeout-minutes` on the CI job.
  */
 class LongChainSpec extends AnyFunSpec {
 

@@ -8,10 +8,9 @@ import scala.compiletime.testing.typeCheckErrors
 case class Filter(a: Option[String], b: Option[String])
 
 /**
- * The rest of the suite lives inside `io.github.stivens.casecomplete`, where `private[casecomplete]`
- * is indistinguishable from public. This spec sits outside that package, so it is the only place
- * that pins both halves of the access story: generated code still reaches the package-private
- * members, and users cannot.
+ * Deliberately outside `io.github.stivens.casecomplete` -- the only vantage point where
+ * `private[casecomplete]` differs from public. Pins both directions: generated code reaches the
+ * package-private members, users cannot.
  */
 class ExternalAccessSpec extends AnyFunSpec {
 
@@ -35,7 +34,7 @@ class ExternalAccessSpec extends AnyFunSpec {
           .compile
       """)
 
-      assert(errors.exists(_.message.contains("markHandled")))
+      assert(errors.exists(e => e.message.contains("markHandled") && e.message.contains("cannot be accessed")))
     }
 
     it("should not let a builder be constructed directly") {
@@ -43,7 +42,7 @@ class ExternalAccessSpec extends AnyFunSpec {
         new io.github.stivens.casecomplete.macros.CaseCompleteBuilder[Filter, Option[String], ("a", "b")](Map.empty)
       """)
 
-      assert(errors.exists(_.message.contains("CaseCompleteBuilder")))
+      assert(errors.exists(_.message.contains("cannot be accessed")))
     }
   }
 }

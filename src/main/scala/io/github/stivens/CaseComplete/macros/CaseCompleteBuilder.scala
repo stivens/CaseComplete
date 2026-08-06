@@ -5,37 +5,17 @@ import io.github.stivens.casecomplete.*
 import scala.quoted.*
 
 /**
-   * Builder class for creating CaseComplete instances with compile-time field completeness checking.
-   * 
-   * The builder tracks which fields have been handled through the type parameter `Handled`, which is
-   * a tuple of field names. This enables compile-time verification that all case class fields have
-   * corresponding handlers.
-   * 
-   * Usage examples:
-   * {{{
-   * case class MovieFilter(
-   *   title_like: Option[String] = None,
-   *   director_eq: Option[String] = None,
-   *   releaseYear: Option[Year] = None,
-   *   rating_gte: Option[Double] = None
-   * )
-   * 
-   * val movieFilterHandler = CaseCompleteBuilder[MovieFilter, Option[String]]
-   *   .usingNonEmpty(_.title_like)(title => s"title ILIKE $title")
-   *   .usingNonEmpty(_.director_eq)(director => s"director = $director")
-   *   .usingNonEmpty(_.releaseYear)(year => s"releaseYear = $year")
-   *   .usingNonEmpty(_.rating_gte)(rating => s"rating >= $rating")
-   *   .compile
-   * 
-   * val filter = MovieFilter(releaseYear = Some(Year.of(1999)), rating_gte = Some(7.0))
-   * val result = movieFilterHandler.eval(filter).toSet.flatten
-   * // Returns: Set("releaseYear = 1999", "rating >= 7.0")
-   * }}}
-   * 
-   * @tparam SOURCE_TYPE The source case class type that must be a Product
-   * @tparam TARGET_TYPE The target type that each field handler produces
-   * @tparam Handled A tuple type representing the field names that have been handled so far
-   */
+ * Builds a [[CaseComplete]] by registering one handler per field. `Handled` accumulates the handled
+ * field names as a tuple of singleton string types, so `compile` can verify completeness.
+ *
+ * {{{
+ * val movieFilterHandler = CaseCompleteBuilder[MovieFilter, Option[String]]
+ *   .usingNonEmpty(_.title_like)(title => s"title ILIKE $title")
+ *   .usingNonEmpty(_.releaseYear)(year => s"releaseYear = $year")
+ *   .ignoring(_.internalId)
+ *   .compile
+ * }}}
+ */
 class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple] private[casecomplete] (
     private[casecomplete] val handlers: Map[String, SOURCE_TYPE => TARGET_TYPE]
 ) {
@@ -53,17 +33,8 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
     new CaseCompleteBuilder(handlers)
 
   /**
-   * Registers a handler for a specific field of the source case class.
-   * 
-   * This method extracts the field name at compile time and adds it to the `Handled` type parameter
-   * to track which fields have been processed. The field selector must be a simple field access
-   * expression like `_.fieldName`.
-   * 
-   * @param field A field selector function that extracts a field from the source type
-   * @param handler A function that transforms the field value to the target type
-   * @tparam FIELD The type of the field being handled
-   * @return A new CaseCompleteBuilder with the updated handlers and type tracking
-   * 
+   * Registers a handler for one field. The selector must be a plain field access, e.g. `_.title_like`.
+   *
    * @example
    * {{{
    * builder.using(_.title_like)(_.map(title => s"title ILIKE $title"))
@@ -98,16 +69,8 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
     ${ CaseCompleteBuilder.usingNonEmptyImpl('this, 'field, 'handler) }
 
   /**
-   * Explicitly ignores a specific field of the source case class.
-   * 
-   * This method marks a field as handled without creating a handler for it. This is useful
-   * when you want to explicitly indicate that a field should be ignored during processing.
-   * The field selector must be a simple field access expression like `_.fieldName`.
-   * 
-   * @param field A field selector function that extracts a field from the source type
-   * @tparam FIELD The type of the field being ignored
-   * @return A new CaseCompleteBuilder with the updated type tracking (no handler added)
-   * 
+   * Marks a field as handled without registering a handler for it.
+   *
    * @example
    * {{{
    * builder.ignoring(_.deprecatedField)
@@ -119,22 +82,8 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
     ${ CaseCompleteBuilder.ignoringImpl('this, 'field) }
 
   /**
-   * Compiles the handler, verifying at compile time that all fields have been handled.
-   * 
-   * This method performs compile-time validation to ensure that every field in the source
-   * case class has a corresponding handler. If any fields are missing, compilation will
-   * fail with a detailed error message listing the unhandled fields.
-   * 
-   * @return A CaseComplete instance that can process source objects
-   * @throws Compilation error if any case class fields are missing handlers
-   * 
-   * @example
-   * {{{
-   * val handler = CaseCompleteBuilder[MovieFilter, Option[String]]
-   *   .usingNonEmpty(_.title_like)(title => s"title ILIKE $title")
-   *   .usingNonEmpty(_.director_eq)(director => s"director = $director")
-   *   .compile // Will fail if releaseYear or rating_gte fields are not handled
-   * }}}
+   * Produces the final [[CaseComplete]], failing compilation with the list of unhandled fields if
+   * any field of SOURCE_TYPE has neither a handler nor an `ignoring` mark.
    */
   inline def compile: CaseComplete[SOURCE_TYPE, TARGET_TYPE] =
     ${ CaseCompleteBuilder.compileImpl[SOURCE_TYPE, TARGET_TYPE, Handled]('this) }
@@ -142,28 +91,12 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
 
 object CaseCompleteBuilder {
 
-  /**
- * Creates a new CaseCompleteBuilder instance for the specified source and target types.
- * 
- * This is the main entry point for creating CaseCompleteBuilder instances. The returned
- * builder starts with no handlers and an empty tuple for the `Handled` type parameter.
- * 
- * @tparam SOURCE_TYPE The source case class type that must be a Product
- * @tparam TARGET_TYPE The target type that each field handler produces
- * @return A new CaseCompleteBuilder instance ready for field handler registration
- * 
- * @example
- * {{{
- * val builder = CaseCompleteBuilder[MovieFilter, Option[String]]
- * // builder is ready to accept field handlers via .using() calls
- * }}}
- */
   def apply[SOURCE_TYPE <: Product, TARGET_TYPE]: CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, EmptyTuple] =
     new CaseCompleteBuilder(Map.empty[String, SOURCE_TYPE => TARGET_TYPE])
 
   /**
-   * The `Any` fallback keeps this reducible for non-`Option` targets so that `usingNonEmptyImpl`
-   * reports the mismatch; without it the user gets a raw "match type reduction failed" instead.
+   * The `Any` fallback keeps this reducible for non-`Option` targets, so `usingNonEmptyImpl` gets to
+   * report the mismatch instead of the compiler's raw "match type reduction failed".
    */
   type OptionPayload[T] = T match {
     case Option[payload] => payload
@@ -202,9 +135,11 @@ object CaseCompleteBuilder {
     checkNotAlreadyHandled[Handled](fieldName)
 
     Type.of[TARGET_TYPE] match {
-      case '[Option[payload]] =>
-        // OptionPayload[TARGET_TYPE] reduces to `payload` exactly here, but only after TARGET_TYPE
-        // has been matched, which the compiler cannot see through in the quote below.
+      // The pattern alone also admits strict subtypes like `Some[String]`, for which the asExprOf
+      // below would crash the expansion; the =:= guard sends them to the readable error instead.
+      case '[Option[payload]] if TypeRepr.of[TARGET_TYPE] =:= TypeRepr.of[Option[payload]] =>
+        // Inside this case OptionPayload[TARGET_TYPE] is known to reduce to `payload`, but the
+        // quote below cannot see that -- hence the two casts.
         val fullHandler =
           '{ (s: SOURCE_TYPE) => $field(s).map(${ handler.asExprOf[FIELD => payload] }) }
             .asExprOf[SOURCE_TYPE => TARGET_TYPE]
@@ -233,8 +168,6 @@ object CaseCompleteBuilder {
     }
   }
 
-  // `builder` is the whole preceding chain, so it must be spliced exactly once -- a second splice
-  // copies that tree.
   private def addHandlerCall[
       SOURCE_TYPE <: Product: Type,
       TARGET_TYPE: Type,
@@ -289,20 +222,6 @@ object CaseCompleteBuilder {
     }
   }
 
-  /**
-   * Macro implementation for the `compile` method.
-   * 
-   * This macro performs compile-time validation to ensure all case class fields have
-   * corresponding handlers. It compares the set of handled fields (from the `Handled`
-   * type parameter) with the actual case class fields and reports any missing handlers.
-   * 
-   * @param builder The current builder expression
-   * @tparam SOURCE_TYPE The source case class type
-   * @tparam TARGET_TYPE The target type
-   * @tparam Handled The handled fields tuple type
-   * @return An expression for the final CaseComplete instance
-   * @throws Compilation error if any case class fields are missing handlers
-   */
   def compileImpl[
       SOURCE_TYPE <: Product: Type,
       TARGET_TYPE: Type,
@@ -312,15 +231,11 @@ object CaseCompleteBuilder {
   )(using q: Quotes): Expr[CaseComplete[SOURCE_TYPE, TARGET_TYPE]] = {
     import q.reflect.*
 
-    // Get the set of fields handled so far from the `Handled` type parameter.
-    val handledFields = getHandledFields(Type.of[Handled])
-    // Get the set of all fields defined on the case class `A`.
+    val handledFields   = getHandledFields(Type.of[Handled])
     val caseClassFields = TypeRepr.of[SOURCE_TYPE].typeSymbol.caseFields.map(_.name).toSet
 
-    // Find the difference.
     val missingFields = caseClassFields -- handledFields
 
-    // If there are any missing fields, abort compilation with an error.
     if missingFields.nonEmpty then report.errorAndAbort(s"""
         |CaseComplete compilation failed: Missing handlers for ${missingFields.size} field(s) in class ${Type.show[SOURCE_TYPE]}.
         |
@@ -333,23 +248,20 @@ object CaseCompleteBuilder {
         |    // ... other handlers
         |    .compile""")
 
-    // If all checks pass, generate the code for the final HandleAllFieldsImpl instance.
     '{ new CaseCompleteImpl($builder.handlers) }
   }
 
-  /**
-   * Unpacks `Handled` -- a tuple of singleton string types -- into the set of field names it records.
-   *
-   * Decoded structurally rather than with quoted type patterns (`'[head *: tail]`): every chain step
-   * walks the whole accumulated tuple, so this is quadratic over a chain, and the type comparer those
-   * patterns invoke made it ~10% of typer time at 96 fields.
-   */
+  // Decoded structurally rather than with quoted type patterns ('[head *: tail]): every chain step
+  // walks the whole accumulated tuple, and the type comparer those patterns invoke made this ~10% of
+  // typer time at 96 fields.
   private def getHandledFields(t: Type[?])(using q: Quotes): Set[String] = {
     import q.reflect.*
 
+    val consSymbol = TypeRepr.of[Any *: Tuple].typeSymbol
+
     def loop(repr: TypeRepr, acc: Set[String]): Set[String] = repr.dealias match {
       case AndType(left, _) => loop(left, acc) // the `t & Tuple` bound recovered at the call sites
-      case AppliedType(tycon, List(ConstantType(StringConstant(name)), tail)) if tycon.typeSymbol.name == "*:" =>
+      case AppliedType(tycon, List(ConstantType(StringConstant(name)), tail)) if tycon.typeSymbol == consSymbol =>
         loop(tail, acc + name)
       case empty if empty =:= TypeRepr.of[EmptyTuple] => acc
       case other => report.errorAndAbort(s"Internal error: HandledFields type was not a tuple: ${other.show}")
