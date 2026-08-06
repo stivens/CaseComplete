@@ -112,12 +112,8 @@ object CaseCompleteBuilder {
       builder: Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, Handled]],
       field: Expr[SOURCE_TYPE => FIELD],
       handler: Expr[FIELD => TARGET_TYPE]
-  )(using Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] = {
-    val fieldName = extractFieldNameOrAbort(field)
-    checkNotAlreadyHandled[Handled](fieldName)
-
-    addHandlerCall(builder, fieldName, '{ (s: SOURCE_TYPE) => $handler($field(s)) })
-  }
+  )(using Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] =
+    registerField(builder, field, Some('{ (s: SOURCE_TYPE) => $handler($field(s)) }))
 
   def usingNonEmptyImpl[
       SOURCE_TYPE <: Product: Type,
@@ -131,9 +127,6 @@ object CaseCompleteBuilder {
   )(using q: Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] = {
     import q.reflect.*
 
-    val fieldName = extractFieldNameOrAbort(field)
-    checkNotAlreadyHandled[Handled](fieldName)
-
     Type.of[TARGET_TYPE] match {
       // The pattern alone also admits strict subtypes like `Some[String]`, for which the asExprOf
       // below would crash the expansion; the =:= guard sends them to the readable error instead.
@@ -144,7 +137,7 @@ object CaseCompleteBuilder {
           '{ (s: SOURCE_TYPE) => $field(s).map(${ handler.asExprOf[FIELD => payload] }) }
             .asExprOf[SOURCE_TYPE => TARGET_TYPE]
 
-        addHandlerCall(builder, fieldName, fullHandler)
+        registerField(builder, field, Some(fullHandler))
       case _ =>
         report.errorAndAbort(
           s"usingNonEmpty requires the target type to be an Option, but it is ${Type.show[TARGET_TYPE]}. Use `using` instead."
@@ -159,27 +152,38 @@ object CaseCompleteBuilder {
   ](
       builder: Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, Handled]],
       field: Expr[SOURCE_TYPE => ?]
-  )(using Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] = {
-    val fieldName = extractFieldNameOrAbort(field)
-    checkNotAlreadyHandled[Handled](fieldName)
+  )(using Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] =
+    registerField(builder, field, None)
 
-    newHandledType[Handled](fieldName) match {
-      case '[t] => '{ $builder.markHandled[t & Tuple] }
-    }
-  }
-
-  private def addHandlerCall[
+  // Owns the shared pipeline -- selector extraction, duplicate check, emit under the extended
+  // `Handled` type -- so a new validation or a change to the type encoding lands in one place.
+  // A quoted type pattern cannot express `<: Tuple` before Scala 3.4, hence the unbounded `'[t]`
+  // with the bound recovered as `t & Tuple`; getHandledFields strips that intersection back off.
+  private def registerField[
       SOURCE_TYPE <: Product: Type,
       TARGET_TYPE: Type,
       Handled <: Tuple: Type
   ](
       builder: Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, Handled]],
-      fieldName: String,
-      handler: Expr[SOURCE_TYPE => TARGET_TYPE]
-  )(using Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] =
-    newHandledType[Handled](fieldName) match {
-      case '[t] => '{ $builder.addHandler[t & Tuple](${ Expr(fieldName) }, $handler) }
+      field: Expr[SOURCE_TYPE => ?],
+      handler: Option[Expr[SOURCE_TYPE => TARGET_TYPE]]
+  )(using q: Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] = {
+    import q.reflect.*
+
+    val fieldName = extractFieldNameOrAbort(field)
+    checkNotAlreadyHandled[Handled](fieldName)
+
+    ConstantType(StringConstant(fieldName)).asType match {
+      case '[name] =>
+        Type.of[name *: Handled] match {
+          case '[t] =>
+            handler match {
+              case Some(h) => '{ $builder.addHandler[t & Tuple](${ Expr(fieldName) }, $h) }
+              case None    => '{ $builder.markHandled[t & Tuple] }
+            }
+        }
     }
+  }
 
   private def extractFieldNameOrAbort(field: Expr[?])(using q: Quotes): String = {
     import q.reflect.*
@@ -208,17 +212,8 @@ object CaseCompleteBuilder {
 
   private def checkNotAlreadyHandled[Handled <: Tuple: Type](fieldName: String)(using q: Quotes): Unit = {
     import q.reflect.*
-    if getHandledFields(Type.of[Handled]).contains(fieldName) then {
+    if getHandledFields[Handled].contains(fieldName) then {
       report.errorAndAbort(s"Field '$fieldName' has already been handled. Each field can only be handled once.")
-    }
-  }
-
-  // Returns an unbounded `Type[?]` because a quoted type pattern cannot express `<: Tuple` before
-  // Scala 3.4; call sites recover the bound with `t & Tuple`.
-  private def newHandledType[Handled <: Tuple: Type](fieldName: String)(using q: Quotes): Type[?] = {
-    import q.reflect.*
-    ConstantType(StringConstant(fieldName)).asType match {
-      case '[name] => Type.of[name *: Handled]
     }
   }
 
@@ -231,7 +226,7 @@ object CaseCompleteBuilder {
   )(using q: Quotes): Expr[CaseComplete[SOURCE_TYPE, TARGET_TYPE]] = {
     import q.reflect.*
 
-    val handledFields   = getHandledFields(Type.of[Handled])
+    val handledFields   = getHandledFields[Handled]
     val caseClassFields = TypeRepr.of[SOURCE_TYPE].typeSymbol.caseFields.map(_.name).toSet
 
     val missingFields = caseClassFields -- handledFields
@@ -254,19 +249,20 @@ object CaseCompleteBuilder {
   // Decoded structurally rather than with quoted type patterns ('[head *: tail]): every chain step
   // walks the whole accumulated tuple, and the type comparer those patterns invoke made this ~10% of
   // typer time at 96 fields.
-  private def getHandledFields(t: Type[?])(using q: Quotes): Set[String] = {
+  private def getHandledFields[Handled <: Tuple: Type](using q: Quotes): Set[String] = {
     import q.reflect.*
 
-    val consSymbol = TypeRepr.of[Any *: Tuple].typeSymbol
+    val consSymbol       = TypeRepr.of[Any *: Tuple].typeSymbol
+    val emptyTupleSymbol = TypeRepr.of[EmptyTuple].dealias.typeSymbol
 
     def loop(repr: TypeRepr, acc: Set[String]): Set[String] = repr.dealias match {
-      case AndType(left, _) => loop(left, acc) // the `t & Tuple` bound recovered at the call sites
+      case AndType(left, _) => loop(left, acc) // strips the `t & Tuple` emitted by registerField
       case AppliedType(tycon, List(ConstantType(StringConstant(name)), tail)) if tycon.typeSymbol == consSymbol =>
         loop(tail, acc + name)
-      case empty if empty =:= TypeRepr.of[EmptyTuple] => acc
+      case empty if empty.typeSymbol == emptyTupleSymbol => acc
       case other => report.errorAndAbort(s"Internal error: HandledFields type was not a tuple: ${other.show}")
     }
 
-    loop(TypeRepr.of(using t), Set.empty)
+    loop(TypeRepr.of[Handled], Set.empty)
   }
 }
