@@ -40,6 +40,17 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
     val handlers: Map[String, SOURCE_TYPE => TARGET_TYPE]
 ) {
 
+  // Package-private so users cannot forge a Handled claim for a field that has no handler. Quoted
+  // calls resolve at macro-definition site, so the generated code can still reach these.
+  private[casecomplete] def addHandler[NewHandled <: Tuple](
+      name: String,
+      handler: SOURCE_TYPE => TARGET_TYPE
+  ): CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, NewHandled] =
+    new CaseCompleteBuilder(handlers + (name -> handler))
+
+  private[casecomplete] def markHandled[NewHandled <: Tuple]: CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, NewHandled] =
+    new CaseCompleteBuilder(handlers)
+
   /**
    * Registers a handler for a specific field of the source case class.
    * 
@@ -62,7 +73,29 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
   )(
       handler: FIELD => TARGET_TYPE
   ): CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?] = // The '?' hides the complex result type from the user
-    ${ CaseCompleteBuilder.usingImpl('this, 'field, '{ Some(handler) }) }
+    ${ CaseCompleteBuilder.usingImpl('this, 'field, 'handler) }
+
+  /**
+   * Registers a handler for an optional field, automatically handling the None case.
+   *
+   * Only available when the target type is an `Option`; the handler produces the `Option`'s payload
+   * and `None` fields map to `None`. Equivalent to `using(_.field)(_.map(handler))`.
+   *
+   * This must stay a method on the class. As a `transparent inline` extension method it binds its
+   * receiver to a parameter proxy carrying the refined type of the whole preceding chain, which makes
+   * compiling a chain exponential in its length -- see LongChainSpec.
+   *
+   * @example
+   * {{{
+   * builder.usingNonEmpty(_.releaseYear)(year => s"releaseYear = $year")
+   * }}}
+   */
+  transparent inline def usingNonEmpty[FIELD](
+      inline field: SOURCE_TYPE => Option[FIELD]
+  )(
+      handler: FIELD => CaseCompleteBuilder.OptionPayload[TARGET_TYPE]
+  ): CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?] =
+    ${ CaseCompleteBuilder.usingNonEmptyImpl('this, 'field, 'handler) }
 
   /**
    * Explicitly ignores a specific field of the source case class.
@@ -83,7 +116,7 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
   transparent inline def ignoring[FIELD](
       inline field: SOURCE_TYPE => FIELD
   ): CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?] = // The '?' hides the complex result type from the user
-    ${ CaseCompleteBuilder.usingImpl('this, 'field, '{ None }) }
+    ${ CaseCompleteBuilder.ignoringImpl('this, 'field) }
 
   /**
    * Compiles the handler, verifying at compile time that all fields have been handled.
@@ -134,54 +167,17 @@ object CaseCompleteBuilder {
   def apply[SOURCE_TYPE <: Product, TARGET_TYPE]: CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, EmptyTuple] =
     new CaseCompleteBuilder(Map.empty[String, SOURCE_TYPE => TARGET_TYPE])
 
-    /**
-   * Extension methods for CaseCompleteBuilder instances that handle optional target types.
-   * 
-   * These extensions provide convenient methods for working with optional fields and
-   * optional target types.
+  /**
+   * The payload of an `Option` target type, used to type `usingNonEmpty`'s handler.
+   *
+   * The `Any` fallback keeps this reducible for non-`Option` targets so that `usingNonEmptyImpl`
+   * reports the mismatch; without it the user gets a raw "match type reduction failed" instead.
    */
-  extension [SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple](
-      builderToOptional: CaseCompleteBuilder[SOURCE_TYPE, Option[TARGET_TYPE], Handled]
-  ) {
-
-    /**
-   * Registers a handler for an optional field, automatically handling the None case.
-   * 
-   * This method is useful when the source field is optional (Option[T]) and you want
-   * to provide a handler that only processes the Some case, automatically returning
-   * None for None values.
-   * 
-   * @param field A field selector that extracts an Option[FIELD] from the source type
-   * @param handler A function that transforms the field value to the target type
-   * @tparam FIELD The type of the field when it's present
-   * @return A new CaseCompleteBuilder with the updated handlers
-   * 
-   * @example
-   * {{{
-   * handler.usingNonEmpty(_.releaseYear)(year => s"releaseYear = $year")
-   * }}}
-     */
-    transparent inline def usingNonEmpty[FIELD](
-        inline field: SOURCE_TYPE => Option[FIELD]
-    )(handler: FIELD => TARGET_TYPE): CaseCompleteBuilder[SOURCE_TYPE, Option[TARGET_TYPE], ?] =
-      builderToOptional.using[Option[FIELD]](field)(_.map(handler))
+  type OptionPayload[T] = T match {
+    case Option[payload] => payload
+    case _               => Any
   }
 
-  /**
-   * Macro implementation for the `using` method.
-   * 
-   * This macro extracts the field name from the field selector expression at compile time
-   * and constructs a new CaseCompleteBuilder with the updated handlers and type tracking.
-   * 
-   * @param builder The current builder expression
-   * @param field The field selector expression
-   * @param fieldHandler The handler function expression
-   * @tparam SOURCE_TYPE The source case class type
-   * @tparam TARGET_TYPE The target type
-   * @tparam Handled The current handled fields tuple type
-   * @tparam FIELD The field type
-   * @return An expression for the new CaseCompleteBuilder
-   */
   def usingImpl[
       SOURCE_TYPE <: Product: Type,
       TARGET_TYPE: Type,
@@ -190,19 +186,84 @@ object CaseCompleteBuilder {
   ](
       builder: Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, Handled]],
       field: Expr[SOURCE_TYPE => FIELD],
-      fieldHandler: Expr[Option[FIELD => TARGET_TYPE]]
+      handler: Expr[FIELD => TARGET_TYPE]
+  )(using Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] = {
+    val fieldName = extractFieldNameOrAbort(field)
+    checkNotAlreadyHandled[Handled](fieldName)
+
+    addHandlerCall(builder, fieldName, '{ (s: SOURCE_TYPE) => $handler($field(s)) })
+  }
+
+  def usingNonEmptyImpl[
+      SOURCE_TYPE <: Product: Type,
+      TARGET_TYPE: Type,
+      Handled <: Tuple: Type,
+      FIELD: Type
+  ](
+      builder: Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, Handled]],
+      field: Expr[SOURCE_TYPE => Option[FIELD]],
+      handler: Expr[FIELD => OptionPayload[TARGET_TYPE]]
   )(using q: Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] = {
     import q.reflect.*
 
-    /**
-     * Extracts the field name from a field selector term.
-     * 
-     * This function recursively traverses the term tree to find the actual field name
-     * being selected, handling various AST transformations that might be applied.
-     * 
-     * @param term The term to extract the field name from
-     * @return Some(fieldName) if successful, None otherwise
-     */
+    val fieldName = extractFieldNameOrAbort(field)
+    checkNotAlreadyHandled[Handled](fieldName)
+
+    Type.of[TARGET_TYPE] match {
+      case '[Option[payload]] =>
+        // OptionPayload[TARGET_TYPE] reduces to `payload` exactly here, but only after TARGET_TYPE
+        // has been matched, which the compiler cannot see through in the quote below.
+        val fullHandler =
+          '{ (s: SOURCE_TYPE) => $field(s).map(${ handler.asExprOf[FIELD => payload] }) }
+            .asExprOf[SOURCE_TYPE => TARGET_TYPE]
+
+        addHandlerCall(builder, fieldName, fullHandler)
+      case _ =>
+        report.errorAndAbort(
+          s"usingNonEmpty requires the target type to be an Option, but it is ${Type.show[TARGET_TYPE]}. Use `using` instead."
+        )
+    }
+  }
+
+  def ignoringImpl[
+      SOURCE_TYPE <: Product: Type,
+      TARGET_TYPE: Type,
+      Handled <: Tuple: Type
+  ](
+      builder: Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, Handled]],
+      field: Expr[SOURCE_TYPE => ?]
+  )(using Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] = {
+    val fieldName = extractFieldNameOrAbort(field)
+    checkNotAlreadyHandled[Handled](fieldName)
+
+    newHandledType[Handled](fieldName) match {
+      case '[t] => '{ $builder.markHandled[t & Tuple] }
+    }
+  }
+
+  /**
+   * Emits `builder.addHandler[fieldName *: Handled](fieldName, handler)`.
+   *
+   * `builder` is the whole preceding chain, so it must be spliced exactly once -- a second splice
+   * copies that tree. `t & Tuple` supplies the bound that a quoted type pattern cannot express
+   * before Scala 3.4.
+   */
+  private def addHandlerCall[
+      SOURCE_TYPE <: Product: Type,
+      TARGET_TYPE: Type,
+      Handled <: Tuple: Type
+  ](
+      builder: Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, Handled]],
+      fieldName: String,
+      handler: Expr[SOURCE_TYPE => TARGET_TYPE]
+  )(using Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] =
+    newHandledType[Handled](fieldName) match {
+      case '[t] => '{ $builder.addHandler[t & Tuple](${ Expr(fieldName) }, $handler) }
+    }
+
+  private def extractFieldNameOrAbort(field: Expr[?])(using q: Quotes): String = {
+    import q.reflect.*
+
     def extractFieldName(term: Term): Option[String] = term match {
       case Select(_, name)      => Some(name)
       case Inlined(_, _, block) => extractFieldName(block)
@@ -219,54 +280,23 @@ object CaseCompleteBuilder {
     }
 
     val fieldAsTerm = field.asTerm
-    val fieldName = extractFieldName(fieldAsTerm) match {
+    extractFieldName(fieldAsTerm) match {
       case Some(name) => name
       case None       => report.errorAndAbort(s"Illegal expression: ${fieldAsTerm.show}, expected a field selector, e.g. `_.foo`")
     }
+  }
 
-    // Check if this field has already been handled
-    val handledFields = getHandledFields(Type.of[Handled])
-    if handledFields.contains(fieldName) then {
+  private def checkNotAlreadyHandled[Handled <: Tuple: Type](fieldName: String)(using q: Quotes): Unit = {
+    import q.reflect.*
+    if getHandledFields(Type.of[Handled]).contains(fieldName) then {
       report.errorAndAbort(s"Field '$fieldName' has already been handled. Each field can only be handled once.")
     }
+  }
 
-    val fieldNameSingletonTypeRepr = ConstantType(StringConstant(fieldName))
-    val handledTupleTypeRepr       = TypeRepr.of[Handled]
-    val AppliedType(tycon, _)      = TypeRepr.of[*:[?, ?]]: @unchecked
-    val newHandledTupleTypeRepr    = AppliedType(tycon, List(fieldNameSingletonTypeRepr, handledTupleTypeRepr))
-
-    newHandledTupleTypeRepr.asType match {
-      case '[t] =>
-        // Get TypeTrees for the type arguments [A, B, t]
-        val typeSource_TT  = TypeTree.of[SOURCE_TYPE]
-        val typeTarget_TT  = TypeTree.of[TARGET_TYPE]
-        val typeHandled_TT = TypeTree.of[t]
-
-        // Get the symbol for the HandleAllFieldsBuilder type
-        val builderSymbol = TypeRepr.of[CaseCompleteBuilder].typeSymbol
-        // Get the constructor symbol
-        val constructor = builderSymbol.primaryConstructor
-
-        // Create the type `HandleAllFieldsBuilder[A, B, t]`
-        val builderTypeTree = Applied(TypeIdent(builderSymbol), List(typeSource_TT, typeTarget_TT, typeHandled_TT))
-
-        // Construct the expression for the `newHandlers` map argument
-        val newHandlersExpr = '{
-          $fieldHandler.fold($builder.handlers) { someFieldHandler =>
-            $builder.handlers + (${ Expr(fieldName) } -> ((s: SOURCE_TYPE) => someFieldHandler($field(s))))
-          }
-        }
-
-        // Build the `new HandleAllFieldsBuilder[A, B, t](newHandlers)` expression tree
-        val newBuilderTerm = Apply(
-          TypeApply(Select(New(builderTypeTree), constructor), List(typeSource_TT, typeTarget_TT, typeHandled_TT)),
-          List(newHandlersExpr.asTerm)
-        )
-
-        // Convert the constructed Term back to an Expr and coerce its type to match the method signature
-        newBuilderTerm.asExprOf[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]]
-      case _ =>
-        report.errorAndAbort("Internal macro error: Could not create a valid tuple type for handled fields.")
+  private def newHandledType[Handled <: Tuple: Type](fieldName: String)(using q: Quotes): Type[?] = {
+    import q.reflect.*
+    ConstantType(StringConstant(fieldName)).asType match {
+      case '[name] => Type.of[name *: Handled]
     }
   }
 

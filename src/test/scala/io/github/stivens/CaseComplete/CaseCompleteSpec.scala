@@ -92,5 +92,50 @@ class CaseCompleteSpec extends AnyFunSpec {
         assert(true) // code compiles
       }
     }
+
+    describe("when validating the chain at compile time") {
+
+      it("should compile a chain that handles every field") {
+        assertCompiles("""
+          CaseComplete.build[TwoFieldFilter, Option[String]]
+            .using(_.a)(identity)
+            .using(_.b)(identity)
+            .compile
+        """)
+      }
+
+      it("should fail to compile when a field has no handler") {
+        assertDoesNotCompile("""
+          CaseComplete.build[TwoFieldFilter, Option[String]]
+            .using(_.a)(identity)
+            .compile
+        """)
+      }
+
+      it("should fail to compile when the same field is handled twice") {
+        assertDoesNotCompile("""
+          CaseComplete.build[TwoFieldFilter, Option[String]]
+            .using(_.a)(identity)
+            .using(_.a)(identity)
+        """)
+      }
+
+      it("should fail to compile when the selector is not a plain field access") {
+        assertDoesNotCompile("""
+          CaseComplete.build[TwoFieldFilter, Option[String]]
+            .using(filter => filter.a.map(_.trim))(identity)
+        """)
+      }
+
+      it("should fail to compile usingNonEmpty when the target type is not an Option") {
+        assertDoesNotCompile("""
+          CaseComplete.build[TwoFieldFilter, String]
+            .usingNonEmpty(_.a)(value => value)
+        """)
+      }
+    }
   }
 }
+
+// Top-level so the assertDoesNotCompile snippets below can name it; never instantiated.
+case class TwoFieldFilter(a: Option[String], b: Option[String])
