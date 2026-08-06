@@ -143,6 +143,25 @@ class CaseCompleteSpec extends AnyFunSpec {
         assert(errors.exists(_.message.contains("expected a field selector")))
       }
 
+      it("should reject a nested selector, which would register the inner field's name against the source type") {
+        val errors = typeCheckErrors("""
+          CaseComplete.build[NestedFilter, Option[String]]
+            .using(_.a.b)(identity)
+        """)
+
+        assert(errors.exists(_.message.contains("expected a field selector")))
+      }
+
+      it("should report the field name when a field is ignored and then handled") {
+        val errors = typeCheckErrors("""
+          CaseComplete.build[TwoFieldFilter, Option[String]]
+            .ignoring(_.a)
+            .using(_.a)(identity)
+        """)
+
+        assert(errors.exists(_.message.contains("Field 'a' has already been handled")))
+      }
+
       it("should point at `using` when usingNonEmpty is applied to a non-Option target") {
         val errors = typeCheckErrors("""
           CaseComplete.build[TwoFieldFilter, String]
@@ -164,5 +183,7 @@ class CaseCompleteSpec extends AnyFunSpec {
   }
 }
 
-// Top-level so the type-checking snippets above can name it.
+// Top-level so the type-checking snippets above can name them.
 case class TwoFieldFilter(a: Option[String], b: Option[String])
+case class NestedInner(b: Option[String])
+case class NestedFilter(a: NestedInner, b: Option[String])

@@ -53,8 +53,8 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
   /**
    * Registers a handler for an optional field, automatically handling the None case.
    *
-   * Equivalent to `using(_.field)(_.map(handler))`, and only available when the target type is an
-   * `Option`.
+   * Equivalent to `using(_.field)(_.map(handler))`. Fails compilation with a dedicated error when
+   * the target type is not an `Option`.
    *
    * @example
    * {{{
@@ -140,7 +140,7 @@ object CaseCompleteBuilder {
         registerField(builder, field, Some(fullHandler))
       case _ =>
         report.errorAndAbort(
-          s"usingNonEmpty requires the target type to be an Option, but it is ${Type.show[TARGET_TYPE]}. Use `using` instead."
+          s"usingNonEmpty requires the target type to be an Option, but it is ${TypeRepr.of[TARGET_TYPE].show(using Printer.TypeReprShortCode)}. Use `using` instead."
         )
     }
   }
@@ -188,17 +188,21 @@ object CaseCompleteBuilder {
   private def extractFieldNameOrAbort(field: Expr[?])(using q: Quotes): String = {
     import q.reflect.*
 
-    def extractFieldName(term: Term): Option[String] = term match {
-      case Select(_, name)      => Some(name)
-      case Inlined(_, _, block) => extractFieldName(block)
-      case Block(ls, _) =>
-        ls match {
-          case (defdef: DefDef) :: _ =>
-            defdef match {
-              case DefDef(_, _, _, Some(body)) => extractFieldName(body)
-              case _                           => None
-            }
-          case _ => None
+    def strip(term: Term): Term = term match {
+      case Inlined(_, _, inner) => strip(inner)
+      case Typed(inner, _)      => strip(inner)
+      case Block(Nil, inner)    => strip(inner)
+      case _                    => term
+    }
+
+    // The receiver must be the lambda's own parameter: accepting any Select would let `_.a.b`
+    // register the *source type's* field "b" and silently defeat the completeness check.
+    def extractFieldName(term: Term): Option[String] = strip(term) match {
+      case Block(List(defdef @ DefDef(_, _, _, Some(body))), _) =>
+        val params = defdef.termParamss.flatMap(_.params).map(_.symbol)
+        strip(body) match {
+          case Select(receiver: Ident, name) if params.contains(receiver.symbol) => Some(name)
+          case _                                                                 => None
         }
       case _ => None
     }
