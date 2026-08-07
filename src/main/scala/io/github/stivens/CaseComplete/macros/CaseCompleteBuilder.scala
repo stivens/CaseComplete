@@ -174,15 +174,6 @@ object CaseCompleteBuilder {
 
     val fieldName = extractFieldNameOrAbort(field)
 
-    // A parameterless method (`_.productArity`) or a body val is a Select on the parameter too;
-    // registering one would add a phantom handler outside the completeness check's universe.
-    val caseFields = caseFieldNames[SOURCE_TYPE]
-    if !caseFields.contains(fieldName) then {
-      report.errorAndAbort(
-        s"'$fieldName' is not a case field of ${Type.show[SOURCE_TYPE]}. Only constructor fields can be handled: ${caseFields.mkString(", ")}."
-      )
-    }
-
     if getHandledFields[Handled].contains(fieldName) then {
       report.errorAndAbort(s"Field '$fieldName' has already been handled. Each field can only be handled once.")
     }
@@ -225,7 +216,7 @@ object CaseCompleteBuilder {
     import q.reflect.*
 
     val handledFields   = getHandledFields[Handled]
-    val caseClassFields = caseFieldNames[SOURCE_TYPE].toSet
+    val caseClassFields = TypeRepr.of[SOURCE_TYPE].typeSymbol.caseFields.map(_.name).toSet
 
     val missingFields = caseClassFields -- handledFields
 
@@ -242,13 +233,6 @@ object CaseCompleteBuilder {
         |    .compile""")
 
     '{ new CaseCompleteImpl($builder.handlers) }
-  }
-
-  // The single definition of the handleable-field universe: registerField's gate and compileImpl's
-  // completeness check must agree on it, or a field could be rejected yet demanded.
-  private def caseFieldNames[SOURCE_TYPE: Type](using q: Quotes): List[String] = {
-    import q.reflect.*
-    TypeRepr.of[SOURCE_TYPE].typeSymbol.caseFields.map(_.name)
   }
 
   // Decoded structurally rather than with quoted type patterns ('[head *: tail]): every chain step

@@ -1,11 +1,11 @@
 package io.github.stivens.casecomplete
 
 import org.scalatest.funspec.AnyFunSpec
+import testsupport.CompileErrorAssertions
 
 import java.time.Year
-import scala.compiletime.testing.typeCheckErrors
 
-class CaseCompleteSpec extends AnyFunSpec {
+class CaseCompleteSpec extends AnyFunSpec with CompileErrorAssertions {
   describe("CaseCompleteBuilder") {
     describe("when given a source type and a target type") {
 
@@ -84,25 +84,35 @@ class CaseCompleteSpec extends AnyFunSpec {
       }
 
       object MovieFilter {
-        val empty = MovieFilter()
+        // Explicit `new`: `MovieFilter()` would re-enter this initializer through the companion's apply.
+        val empty = new MovieFilter(None, None, None, None)
       }
 
-      val buildMovieFilterHandler = CaseComplete.build[MovieFilter, Option[String]]
+      val allConstructorFieldsHandled = CaseComplete
+        .build[MovieFilter, Option[String]]
+        .using(_.title_like)(_ => None)
+        .using(_.director_eq)(_ => None)
+        .using(_.releaseYear_eq)(_ => None)
+        .using(_.rating_gte)(_ => None)
 
       it("should not require the extra fields to be handled") {
-        val movieFilterHandler = buildMovieFilterHandler
-          .using(_.title_like)(_ => None)
-          .using(_.director_eq)(_ => None)
-          .using(_.releaseYear_eq)(_ => None)
-          .using(_.rating_gte)(_ => None)
-          .compile
+        allConstructorFieldsHandled.compile
 
         assert(true) // code compiles
+      }
+
+      it("should allow the extra fields to be handled") {
+        val movieFilterHandler = allConstructorFieldsHandled
+          .using(_.foo)(Some(_))
+          .compile
+
+        assert(movieFilterHandler.eval(MovieFilter()).flatten == List("bar"))
       }
     }
 
     describe("when validating the chain at compile time") {
 
+      // Positive control for the negative snippet tests below.
       it("should compile a chain that handles every field") {
         assertCompiles("""
           CaseComplete.build[TwoFieldFilter, Option[String]]
@@ -187,23 +197,14 @@ class CaseCompleteSpec extends AnyFunSpec {
         )
       }
 
-      it("should reject a selector that is not a case field, such as an inherited method") {
-        assertErrorContains(
-          """
-          CaseComplete.build[TwoFieldFilter, Option[String]]
-            .using(_.productArity)(_ => None)
-          """,
-          "'productArity' is not a case field"
-        )
-      }
-
-      it("should reject a selector that names a body val rather than a constructor field") {
+      it("should not count a handled body val toward the completeness of constructor fields") {
         assertErrorContains(
           """
           CaseComplete.build[BodyValFilter, Option[String]]
-            .using(_.derived)(_ => None)
+            .using(_.derived)(identity)
+            .compile
           """,
-          "'derived' is not a case field"
+          "Missing handlers for fields: a"
         )
       }
 
@@ -220,16 +221,12 @@ class CaseCompleteSpec extends AnyFunSpec {
         )
       }
 
-      // The three validations live in registerField, shared by all entry points; these pin that
+      // The validations live in registerField, shared by all entry points; these pin that
       // `ignoring` and `usingNonEmpty` route through it rather than just `using`.
       it("should run the shared selector checks for ignoring too") {
         assertErrorContains(
           """CaseComplete.build[NestedFilter, Option[String]].ignoring(_.a.b)""",
           "expected a field selector"
-        )
-        assertErrorContains(
-          """CaseComplete.build[TwoFieldFilter, Option[String]].ignoring(_.productArity)""",
-          "'productArity' is not a case field"
         )
       }
 
@@ -243,14 +240,6 @@ class CaseCompleteSpec extends AnyFunSpec {
         )
       }
     }
-  }
-
-  private inline def assertErrorContains(inline code: String, expected: String): Unit = {
-    val errors = typeCheckErrors(code)
-    assert(
-      errors.exists(_.message.contains(expected)),
-      s"no compile error contained '$expected'; got: ${errors.map(_.message)}"
-    )
   }
 }
 

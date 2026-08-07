@@ -2,8 +2,7 @@ package externaluser
 
 import io.github.stivens.casecomplete.CaseComplete
 import org.scalatest.funspec.AnyFunSpec
-
-import scala.compiletime.testing.typeCheckErrors
+import testsupport.CompileErrorAssertions
 
 case class Filter(a: Option[String], b: Option[String])
 
@@ -12,7 +11,7 @@ case class Filter(a: Option[String], b: Option[String])
  * `private[casecomplete]` differs from public. Pins both directions: generated code reaches the
  * package-private members, users cannot.
  */
-class ExternalAccessSpec extends AnyFunSpec {
+class ExternalAccessSpec extends AnyFunSpec with CompileErrorAssertions {
 
   describe("a builder used from outside the library's package") {
 
@@ -67,11 +66,6 @@ class ExternalAccessSpec extends AnyFunSpec {
     }
   }
 
-  private inline def assertInaccessible(inline code: String, member: String): Unit = {
-    val errors = typeCheckErrors(code)
-    assert(
-      errors.exists(e => e.message.contains(member) && e.message.contains("cannot be accessed")),
-      s"no error said '$member' cannot be accessed; got: ${errors.map(_.message)}"
-    )
-  }
+  private inline def assertInaccessible(inline code: String, member: String): Unit =
+    assertErrorContains(code, member, "cannot be accessed")
 }
