@@ -27,22 +27,51 @@ class ExternalAccessSpec extends AnyFunSpec {
     }
 
     it("should not let a field be marked handled without a handler") {
-      val errors = typeCheckErrors("""
+      assertInaccessible(
+        """
         CaseComplete.build[Filter, Option[String]]
           .using(_.a)(identity)
           .markHandled[("b", "a")]
           .compile
-      """)
-
-      assert(errors.exists(e => e.message.contains("markHandled") && e.message.contains("cannot be accessed")))
+        """,
+        "markHandled"
+      )
     }
 
     it("should not let a builder be constructed directly") {
-      val errors = typeCheckErrors("""
+      assertInaccessible(
+        """
         new io.github.stivens.casecomplete.macros.CaseCompleteBuilder[Filter, Option[String], ("a", "b")](Map.empty)
-      """)
-
-      assert(errors.exists(_.message.contains("cannot be accessed")))
+        """,
+        "CaseCompleteBuilder"
+      )
     }
+
+    it("should not let a handler be registered under a forged field name") {
+      assertInaccessible(
+        """
+        CaseComplete.build[Filter, Option[String]]
+          .using(_.a)(identity)
+          .addHandler[("b", "a")]("b", _ => None)
+          .compile
+        """,
+        "addHandler"
+      )
+    }
+
+    it("should not expose the handler map") {
+      assertInaccessible(
+        """CaseComplete.build[Filter, Option[String]].handlers""",
+        "handlers"
+      )
+    }
+  }
+
+  private inline def assertInaccessible(inline code: String, member: String): Unit = {
+    val errors = typeCheckErrors(code)
+    assert(
+      errors.exists(e => e.message.contains(member) && e.message.contains("cannot be accessed")),
+      s"no error said '$member' cannot be accessed; got: ${errors.map(_.message)}"
+    )
   }
 }

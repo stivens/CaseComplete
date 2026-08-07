@@ -115,71 +115,142 @@ class CaseCompleteSpec extends AnyFunSpec {
       // These assert the message text, not just failure: the messages exist to be read, and a
       // failure-only test would not notice them degrading into raw compiler diagnostics.
       it("should report the unhandled field when one has no handler") {
-        val errors = typeCheckErrors("""
+        assertErrorContains(
+          """
           CaseComplete.build[TwoFieldFilter, Option[String]]
             .using(_.a)(identity)
             .compile
-        """)
-
-        assert(errors.exists(_.message.contains("Missing handlers for fields: b")))
+          """,
+          "Missing handlers for fields: b"
+        )
       }
 
       it("should report the field name when the same field is handled twice") {
-        val errors = typeCheckErrors("""
+        assertErrorContains(
+          """
           CaseComplete.build[TwoFieldFilter, Option[String]]
             .using(_.a)(identity)
             .using(_.a)(identity)
-        """)
-
-        assert(errors.exists(_.message.contains("Field 'a' has already been handled")))
+          """,
+          "Field 'a' has already been handled"
+        )
       }
 
       it("should report the offending expression when the selector is not a plain field access") {
-        val errors = typeCheckErrors("""
+        assertErrorContains(
+          """
           CaseComplete.build[TwoFieldFilter, Option[String]]
             .using(filter => filter.a.map(_.trim))(identity)
-        """)
-
-        assert(errors.exists(_.message.contains("expected a field selector")))
+          """,
+          "expected a field selector"
+        )
       }
 
       it("should reject a nested selector, which would register the inner field's name against the source type") {
-        val errors = typeCheckErrors("""
+        assertErrorContains(
+          """
           CaseComplete.build[NestedFilter, Option[String]]
             .using(_.a.b)(identity)
-        """)
-
-        assert(errors.exists(_.message.contains("expected a field selector")))
+          """,
+          "expected a field selector"
+        )
       }
 
       it("should report the field name when a field is ignored and then handled") {
-        val errors = typeCheckErrors("""
+        assertErrorContains(
+          """
           CaseComplete.build[TwoFieldFilter, Option[String]]
             .ignoring(_.a)
             .using(_.a)(identity)
-        """)
-
-        assert(errors.exists(_.message.contains("Field 'a' has already been handled")))
+          """,
+          "Field 'a' has already been handled"
+        )
       }
 
       it("should point at `using` when usingNonEmpty is applied to a non-Option target") {
-        val errors = typeCheckErrors("""
+        assertErrorContains(
+          """
           CaseComplete.build[TwoFieldFilter, String]
             .usingNonEmpty(_.a)(value => value)
-        """)
-
-        assert(errors.exists(_.message.contains("usingNonEmpty requires the target type to be an Option")))
+          """,
+          "usingNonEmpty requires the target type to be exactly Option"
+        )
       }
 
       it("should reject a target type that is a strict subtype of Option") {
-        val errors = typeCheckErrors("""
+        assertErrorContains(
+          """
           CaseComplete.build[TwoFieldFilter, Some[String]]
             .usingNonEmpty(_.a)(identity)
-        """)
+          """,
+          "usingNonEmpty requires the target type to be exactly Option"
+        )
+      }
 
-        assert(errors.exists(_.message.contains("usingNonEmpty requires the target type to be an Option")))
+      it("should reject a selector that is not a case field, such as an inherited method") {
+        assertErrorContains(
+          """
+          CaseComplete.build[TwoFieldFilter, Option[String]]
+            .using(_.productArity)(_ => None)
+          """,
+          "'productArity' is not a case field"
+        )
+      }
+
+      it("should reject a selector that names a body val rather than a constructor field") {
+        assertErrorContains(
+          """
+          CaseComplete.build[BodyValFilter, Option[String]]
+            .using(_.derived)(_ => None)
+          """,
+          "'derived' is not a case field"
+        )
+      }
+
+      it("should explain the fix when compile is called on a builder ascribed a widened type") {
+        assertErrorContains(
+          """
+          val b: macros.CaseCompleteBuilder[TwoFieldFilter, Option[String], ?] =
+            CaseComplete.build[TwoFieldFilter, Option[String]]
+              .using(_.a)(identity)
+              .using(_.b)(identity)
+          b.compile
+          """,
+          "the chain's inferred type"
+        )
+      }
+
+      // The three validations live in registerField, shared by all entry points; these pin that
+      // `ignoring` and `usingNonEmpty` route through it rather than just `using`.
+      it("should run the shared selector checks for ignoring too") {
+        assertErrorContains(
+          """CaseComplete.build[NestedFilter, Option[String]].ignoring(_.a.b)""",
+          "expected a field selector"
+        )
+        assertErrorContains(
+          """CaseComplete.build[TwoFieldFilter, Option[String]].ignoring(_.productArity)""",
+          "'productArity' is not a case field"
+        )
+      }
+
+      it("should report a bad selector before usingNonEmpty's target-type check") {
+        assertErrorContains(
+          """
+          CaseComplete.build[NestedFilter, String]
+            .usingNonEmpty(_.a.b)(identity)
+          """,
+          "expected a field selector"
+        )
       }
     }
+  }
+
+  private inline def assertErrorContains(inline code: String, expected: String): Unit = {
+    val errors = typeCheckErrors(code)
+    assert(
+      errors.exists(_.message.contains(expected)),
+      s"no compile error contained '$expected'; got: ${errors.map(_.message)}"
+    )
   }
 }
 
@@ -187,3 +258,4 @@ class CaseCompleteSpec extends AnyFunSpec {
 case class TwoFieldFilter(a: Option[String], b: Option[String])
 case class NestedInner(b: Option[String])
 case class NestedFilter(a: NestedInner, b: Option[String])
+case class BodyValFilter(a: Option[String]) { val derived: Option[String] = a }

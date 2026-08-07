@@ -3,7 +3,8 @@ package io.github.stivens.casecomplete
 import org.scalatest.funspec.AnyFunSpec
 
 /**
- * Regression guard for the compile-time blowup described on `CaseCompleteBuilder.usingNonEmpty`:
+ * Regression guard for the compile-time blowup described in `CaseCompleteBuilder` (the note above
+ * `using`):
  * pre-fix the cost was ~1.9x per chain step (16 steps: 4.0 s of posttyper; 20 steps: 54 s), so the
  * 32 steps below would take hours; post-fix the file costs ~0.25 s. All three chaining methods are
  * interleaved because each is equally at risk.

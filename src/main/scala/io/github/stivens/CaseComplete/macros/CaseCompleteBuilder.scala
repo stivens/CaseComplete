@@ -27,11 +27,14 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
       name: String,
       handler: SOURCE_TYPE => TARGET_TYPE
   ): CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, NewHandled] =
-    new CaseCompleteBuilder(handlers + (name -> handler))
+    new CaseCompleteBuilder(handlers.updated(name, handler))
 
   private[casecomplete] def markHandled[NewHandled <: Tuple]: CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, NewHandled] =
     new CaseCompleteBuilder(handlers)
 
+  // `using`, `usingNonEmpty` and `ignoring` must stay methods on the class. A `transparent inline`
+  // extension method binds its receiver to a parameter proxy carrying the refined type of the whole
+  // preceding chain, which makes compiling a chain exponential in its length -- see LongChainSpec.
   /**
    * Registers a handler for one field. The selector must be a plain field access, e.g. `_.title_like`.
    *
@@ -47,9 +50,6 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
   ): CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?] = // The '?' hides the complex result type from the user
     ${ CaseCompleteBuilder.usingImpl('this, 'field, 'handler) }
 
-  // Keep this and its sibling methods on the class. A `transparent inline` extension method binds its
-  // receiver to a parameter proxy carrying the refined type of the whole preceding chain, which makes
-  // compiling a chain exponential in its length -- see LongChainSpec.
   /**
    * Registers a handler for an optional field, automatically handling the None case.
    *
@@ -127,22 +127,24 @@ object CaseCompleteBuilder {
   )(using q: Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] = {
     import q.reflect.*
 
-    Type.of[TARGET_TYPE] match {
-      // The pattern alone also admits strict subtypes like `Some[String]`, for which the asExprOf
-      // below would crash the expansion; the =:= guard sends them to the readable error instead.
-      case '[Option[payload]] if TypeRepr.of[TARGET_TYPE] =:= TypeRepr.of[Option[payload]] =>
-        // Inside this case OptionPayload[TARGET_TYPE] is known to reduce to `payload`, but the
-        // quote below cannot see that -- hence the two casts.
-        val fullHandler =
-          '{ (s: SOURCE_TYPE) => $field(s).map(${ handler.asExprOf[FIELD => payload] }) }
-            .asExprOf[SOURCE_TYPE => TARGET_TYPE]
-
-        registerField(builder, field, Some(fullHandler))
+    // Matched on the type constructor's symbol: a quoted pattern ('[Option[payload]]) also admits
+    // strict subtypes like `Some[String]`, for which the asExprOf below would crash the expansion.
+    def fullHandler = TypeRepr.of[TARGET_TYPE].dealias match {
+      case AppliedType(tycon, List(payloadRepr)) if tycon.typeSymbol == TypeRepr.of[Option[Any]].typeSymbol =>
+        payloadRepr.asType match {
+          case '[payload] =>
+            // Here OptionPayload[TARGET_TYPE] is known to reduce to `payload`, but the quote
+            // cannot see that -- hence the two casts.
+            '{ (s: SOURCE_TYPE) => $field(s).map(${ handler.asExprOf[FIELD => payload] }) }
+              .asExprOf[SOURCE_TYPE => TARGET_TYPE]
+        }
       case _ =>
         report.errorAndAbort(
-          s"usingNonEmpty requires the target type to be an Option, but it is ${TypeRepr.of[TARGET_TYPE].show(using Printer.TypeReprShortCode)}. Use `using` instead."
+          s"usingNonEmpty requires the target type to be exactly Option[...], but it is ${TypeRepr.of[TARGET_TYPE].show(using Printer.TypeReprShortCode)}. Use `using` instead."
         )
     }
+
+    registerField(builder, field, Some(fullHandler))
   }
 
   def ignoringImpl[
@@ -164,11 +166,23 @@ object CaseCompleteBuilder {
   ](
       builder: Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, Handled]],
       field: Expr[SOURCE_TYPE => ?],
-      handler: Option[Expr[SOURCE_TYPE => TARGET_TYPE]]
+      // By-name so an entry point's own validation (usingNonEmpty's Option-target check) runs after
+      // the shared checks below -- every entry point reports selector errors with the same precedence.
+      handler: => Option[Expr[SOURCE_TYPE => TARGET_TYPE]]
   )(using q: Quotes): Expr[CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, ?]] = {
     import q.reflect.*
 
     val fieldName = extractFieldNameOrAbort(field)
+
+    // A parameterless method (`_.productArity`) or a body val is a Select on the parameter too;
+    // registering one would add a phantom handler outside the completeness check's universe.
+    val caseFields = caseFieldNames[SOURCE_TYPE]
+    if !caseFields.contains(fieldName) then {
+      report.errorAndAbort(
+        s"'$fieldName' is not a case field of ${Type.show[SOURCE_TYPE]}. Only constructor fields can be handled: ${caseFields.mkString(", ")}."
+      )
+    }
+
     if getHandledFields[Handled].contains(fieldName) then {
       report.errorAndAbort(s"Field '$fieldName' has already been handled. Each field can only be handled once.")
     }
@@ -185,20 +199,20 @@ object CaseCompleteBuilder {
   private def extractFieldNameOrAbort(field: Expr[?])(using q: Quotes): String = {
     import q.reflect.*
 
+    val selector = field.asTerm.underlyingArgument
+    def abort: Nothing =
+      report.errorAndAbort(s"Illegal expression: ${selector.show}, expected a field selector, e.g. `_.foo`")
+
     // The receiver must be the lambda's own parameter: accepting any Select would let `_.a.b`
     // register the *source type's* field "b" and silently defeat the completeness check.
-    val fieldName = field.asTerm.underlyingArgument match {
+    selector match {
       case Lambda(List(param), body) =>
         body.underlyingArgument match {
-          case Select(receiver: Ident, name) if receiver.symbol == param.symbol => Some(name)
-          case _                                                                => None
+          case Select(receiver: Ident, name) if receiver.symbol == param.symbol => name
+          case _                                                                => abort
         }
-      case _ => None
+      case _ => abort
     }
-
-    fieldName.getOrElse(
-      report.errorAndAbort(s"Illegal expression: ${field.asTerm.show}, expected a field selector, e.g. `_.foo`")
-    )
   }
 
   def compileImpl[
@@ -211,7 +225,7 @@ object CaseCompleteBuilder {
     import q.reflect.*
 
     val handledFields   = getHandledFields[Handled]
-    val caseClassFields = TypeRepr.of[SOURCE_TYPE].typeSymbol.caseFields.map(_.name).toSet
+    val caseClassFields = caseFieldNames[SOURCE_TYPE].toSet
 
     val missingFields = caseClassFields -- handledFields
 
@@ -230,9 +244,18 @@ object CaseCompleteBuilder {
     '{ new CaseCompleteImpl($builder.handlers) }
   }
 
+  // The single definition of the handleable-field universe: registerField's gate and compileImpl's
+  // completeness check must agree on it, or a field could be rejected yet demanded.
+  private def caseFieldNames[SOURCE_TYPE: Type](using q: Quotes): List[String] = {
+    import q.reflect.*
+    TypeRepr.of[SOURCE_TYPE].typeSymbol.caseFields.map(_.name)
+  }
+
   // Decoded structurally rather than with quoted type patterns ('[head *: tail]): every chain step
   // walks the whole accumulated tuple, and the type comparer those patterns invoke made this ~10% of
-  // typer time at 96 fields.
+  // typer time at 96 fields. Unlike those patterns this decodes only the literal `*:` spine of
+  // ConstantTypes that registerField emits, not Tuple2-sugar shapes -- safe because the constructor
+  // and markHandled are package-private, so nothing else produces a Handled.
   private def getHandledFields[Handled <: Tuple: Type](using q: Quotes): Set[String] = {
     import q.reflect.*
 
@@ -243,7 +266,11 @@ object CaseCompleteBuilder {
       case AppliedType(tycon, List(ConstantType(StringConstant(name)), tail)) if tycon.typeSymbol == consSymbol =>
         loop(tail, acc + name)
       case empty if empty.typeSymbol == emptyTupleSymbol => acc
-      case other => report.errorAndAbort(s"Internal error: HandledFields type was not a tuple: ${other.show}")
+      case other if other.typeSymbol.isAbstractType =>
+        report.errorAndAbort(
+          s"Cannot read the handled fields from type ${other.show}: the builder was ascribed a widened type (e.g. `CaseCompleteBuilder[..., ?]`). Keep the chain's inferred type instead."
+        )
+      case other => report.errorAndAbort(s"Internal error: unexpected Handled type: ${other.show}")
     }
 
     loop(TypeRepr.of[Handled], Set.empty)
