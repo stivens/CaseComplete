@@ -3,24 +3,26 @@ package io.github.stivens.casecomplete
 import org.scalatest.funspec.AnyFunSpec
 import testsupport.CompileErrorAssertions
 
-import java.time.Year
-
 class CaseCompleteSpec extends AnyFunSpec with CompileErrorAssertions {
   describe("CaseCompleteBuilder") {
     describe("when given a source type and a target type") {
 
+      // Ints rather than java.time.Year and Double: the JS and Native javalibs have no java.time,
+      // and Scala.js renders the Double 7.0 as "7", so either would leak the platform into the
+      // expected strings.
       case class MovieFilter(
           title_like: Option[String] = None,
           director_eq: Option[String] = None,
-          releaseYear_eq: Option[Year] = None,
-          rating_gte: Option[Double] = None
+          releaseYear_eq: Option[Int] = None,
+          rating_gte: Option[Int] = None
       )
 
       val filter = MovieFilter(
-        releaseYear_eq = Some(Year.of(1999)),
-        rating_gte = Some(7.0)
+        releaseYear_eq = Some(1999),
+        rating_gte = Some(7)
       )
-      val expectedOrder  = List("rating >= 7.0", "releaseYear = 1999")
+      // Declaration order (releaseYear_eq before rating_gte); alphabetical order would swap them.
+      val expectedOrder  = List("releaseYear = 1999", "rating >= 7")
       val expectedResult = expectedOrder.toSet
 
       val buildMovieFilterHandler = CaseComplete.build[MovieFilter, Option[String]]
@@ -51,7 +53,7 @@ class CaseCompleteSpec extends AnyFunSpec with CompileErrorAssertions {
         assert(evaulated == expectedResult)
       }
 
-      it("should evaluate handlers in alphabetical order of field name, on every call") {
+      it("should evaluate handlers in field declaration order, on every call") {
         // Repeated so that caching the ordering as something single-use (a view, an iterator) fails here.
         assert(movieFilterHandler.eval(filter).flatten == expectedOrder)
         assert(movieFilterHandler.eval(filter).flatten == expectedOrder)
@@ -76,10 +78,11 @@ class CaseCompleteSpec extends AnyFunSpec with CompileErrorAssertions {
       case class MovieFilter(
           title_like: Option[String] = None,
           director_eq: Option[String] = None,
-          releaseYear_eq: Option[Year] = None,
-          rating_gte: Option[Double] = None
+          releaseYear_eq: Option[Int] = None,
+          rating_gte: Option[Int] = None
       ) {
         lazy val isEmpty: Boolean = this == MovieFilter.empty
+        val extra: String         = "extra"
         val foo: String           = "bar"
       }
 
@@ -101,12 +104,21 @@ class CaseCompleteSpec extends AnyFunSpec with CompileErrorAssertions {
         assert(true) // code compiles
       }
 
-      it("should allow the extra fields to be handled") {
-        val movieFilterHandler = allConstructorFieldsHandled
+      it("should evaluate extra-field handlers after the constructor fields, in registration order") {
+        // `foo` is registered first though `extra` precedes it both alphabetically and in
+        // declaration order, and both are registered before any constructor field: only
+        // "constructor fields first, then extras in registration order" yields this output.
+        val movieFilterHandler = CaseComplete
+          .build[MovieFilter, Option[String]]
           .using(_.foo)(Some(_))
+          .using(_.extra)(Some(_))
+          .using(_.title_like)(_ => Some("title"))
+          .using(_.director_eq)(_ => None)
+          .using(_.releaseYear_eq)(_ => None)
+          .using(_.rating_gte)(_ => None)
           .compile
 
-        assert(movieFilterHandler.eval(MovieFilter()).flatten == List("bar"))
+        assert(movieFilterHandler.eval(MovieFilter()).flatten == List("title", "bar", "extra"))
       }
     }
 
