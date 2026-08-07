@@ -32,6 +32,10 @@ class CaseCompleteBuilder[SOURCE_TYPE <: Product, TARGET_TYPE, Handled <: Tuple]
   private[casecomplete] def markHandled[NewHandled <: Tuple]: CaseCompleteBuilder[SOURCE_TYPE, TARGET_TYPE, NewHandled] =
     new CaseCompleteBuilder(handlers)
 
+  // Fields ignored via `ignoring` appear in fieldOrder but have no handler, hence the flatMap.
+  private[casecomplete] def orderedHandlers(fieldOrder: List[String]): List[SOURCE_TYPE => TARGET_TYPE] =
+    fieldOrder.flatMap(handlers.get)
+
   // `using`, `usingNonEmpty` and `ignoring` must stay methods on the class. A `transparent inline`
   // extension method binds its receiver to a parameter proxy carrying the refined type of the whole
   // preceding chain, which makes compiling a chain exponential in its length -- see LongChainSpec.
@@ -216,9 +220,9 @@ object CaseCompleteBuilder {
     import q.reflect.*
 
     val handledFields   = getHandledFields[Handled]
-    val caseClassFields = TypeRepr.of[SOURCE_TYPE].typeSymbol.caseFields.map(_.name).toSet
+    val caseClassFields = TypeRepr.of[SOURCE_TYPE].typeSymbol.caseFields.map(_.name)
 
-    val missingFields = caseClassFields -- handledFields
+    val missingFields = caseClassFields.diff(handledFields)
 
     if missingFields.nonEmpty then report.errorAndAbort(s"""
         |CaseComplete compilation failed: Missing handlers for ${missingFields.size} field(s) in class ${Type.show[SOURCE_TYPE]}.
@@ -232,7 +236,9 @@ object CaseCompleteBuilder {
         |    // ... other handlers
         |    .compile""")
 
-    '{ new CaseCompleteImpl($builder.handlers) }
+    val fieldOrder = caseClassFields ++ handledFields.diff(caseClassFields)
+
+    '{ new CaseCompleteImpl($builder.orderedHandlers(${ Expr(fieldOrder) })) }
   }
 
   // Decoded structurally rather than with quoted type patterns ('[head *: tail]): every chain step
@@ -240,15 +246,17 @@ object CaseCompleteBuilder {
   // typer time at 96 fields. Unlike those patterns this decodes only the literal `*:` spine of
   // ConstantTypes that registerField emits, not Tuple2-sugar shapes -- safe because the constructor
   // and markHandled are package-private, so nothing else produces a Handled.
-  private def getHandledFields[Handled <: Tuple: Type](using q: Quotes): Set[String] = {
+  // Returns the fields in registration order (earliest first): the tuple is built by prepending,
+  // so prepending again while walking head-to-tail restores the original order.
+  private def getHandledFields[Handled <: Tuple: Type](using q: Quotes): List[String] = {
     import q.reflect.*
 
     val consSymbol       = TypeRepr.of[Any *: Tuple].typeSymbol
     val emptyTupleSymbol = TypeRepr.of[EmptyTuple].dealias.typeSymbol
 
-    def loop(repr: TypeRepr, acc: Set[String]): Set[String] = repr.dealias match {
+    def loop(repr: TypeRepr, acc: List[String]): List[String] = repr.dealias match {
       case AppliedType(tycon, List(ConstantType(StringConstant(name)), tail)) if tycon.typeSymbol == consSymbol =>
-        loop(tail, acc + name)
+        loop(tail, name :: acc)
       case empty if empty.typeSymbol == emptyTupleSymbol => acc
       case other if other.typeSymbol.isAbstractType =>
         report.errorAndAbort(
@@ -257,6 +265,6 @@ object CaseCompleteBuilder {
       case other => report.errorAndAbort(s"Internal error: unexpected Handled type: ${other.show}")
     }
 
-    loop(TypeRepr.of[Handled], Set.empty)
+    loop(TypeRepr.of[Handled], Nil)
   }
 }

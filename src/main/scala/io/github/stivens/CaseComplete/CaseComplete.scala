@@ -3,6 +3,11 @@ package io.github.stivens.casecomplete
 import io.github.stivens.casecomplete.macros.CaseCompleteBuilder
 
 sealed abstract class CaseComplete[SOURCE_TYPE <: Product, TARGET_TYPE] {
+
+  /**
+   * Applies every registered handler, ordered by the source type's field declaration order.
+   * Handled fields that are not primary-constructor fields come last, in registration order.
+   */
   def eval(source: SOURCE_TYPE): List[TARGET_TYPE]
 }
 
@@ -12,11 +17,8 @@ object CaseComplete {
 }
 
 private[casecomplete] class CaseCompleteImpl[SOURCE_TYPE <: Product, TARGET_TYPE](
-    handlers: Map[String, SOURCE_TYPE => TARGET_TYPE]
+    orderedHandlers: List[SOURCE_TYPE => TARGET_TYPE]
 ) extends CaseComplete[SOURCE_TYPE, TARGET_TYPE] {
-  private val sortedHandlers: List[SOURCE_TYPE => TARGET_TYPE] =
-    handlers.toList.sortBy(_._1).map(_._2)
-
   def eval(source: SOURCE_TYPE): List[TARGET_TYPE] =
-    sortedHandlers.map(_(source))
+    orderedHandlers.map(_(source))
 }

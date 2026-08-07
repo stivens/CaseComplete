@@ -22,6 +22,12 @@ A Scala 3 library that provides compile-time guarantees for complete case class 
 libraryDependencies += "io.github.stivens" %% "casecomplete" % "0.3.0"
 ```
 
+CaseComplete is also published for Scala.js and Scala Native (see [Requirements](#requirements)); in a cross-built project use:
+
+```scala
+libraryDependencies += "io.github.stivens" %%% "casecomplete" % "0.3.0"
+```
+
 `scala-cli`:
 
 ```scala
@@ -218,7 +224,7 @@ Registers a handler for optional fields, automatically handling `None`:
 
 ```scala
 builder.usingNonEmpty(_.optionalField)(value => transformedValue)
-// equivalant to builder.using(_.optionalField)((_: Option[F]).map((value: F) => transformedValue))
+// equivalent to builder.using(_.optionalField)((_: Option[F]).map((value: F) => transformedValue))
 ```
 
 #### `ignoring(_.field)`
@@ -247,9 +253,19 @@ val result = handler.eval(sourceInstance)
 // Returns: List[TargetType]
 ```
 
+Handlers are evaluated in the declaration order of the source type's fields. Handled fields
+that are not primary-constructor fields come last, in the order they were registered.
+
 ## Requirements
 
 - Scala >= 3.3
+- Platforms: JVM, Scala.js 1.x, Scala Native 0.5
+
+## Compatibility policy
+
+CaseComplete follows [early semantic versioning](https://www.scala-lang.org/blog/2021/02/16/preventing-version-conflicts-with-versionscheme.html):
+binary compatibility is preserved within a major version (post-1.0.0), and every release is
+checked against the previous one with [MiMa](https://github.com/lightbend-labs/mima) in CI.
 
 ## Contributing
 
