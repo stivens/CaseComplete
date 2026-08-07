@@ -11,6 +11,9 @@ jobs:
     ci:
         name: Compile and test CaseComplete
         runs-on: ubuntu-latest
+        # A LongChainSpec regression fails by hanging, so cap the job instead of burning
+        # GitHub's 360-minute default.
+        timeout-minutes: 15
         steps:
             - uses: actions/checkout@v4
             - name: Setup JDK 21, Scala, SBT
