@@ -15,15 +15,22 @@ jobs:
         # GitHub's 360-minute default. Sized for JVM + JS + Native (linking dominates).
         timeout-minutes: 30
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             - name: Setup JDK 21, Scala, SBT
-              uses: actions/setup-java@v4
+              uses: actions/setup-java@v6
               with:
                 distribution: 'temurin'
                 java-version: '21'
                 cache: 'sbt'
             - name: Setup SBT
               uses: sbt/setup-sbt@v1
+            # setup-java's sbt cache covers dependencies only, not sbt 2's content-addressed task cache.
+            - name: Cache sbt 2 task outputs
+              uses: actions/cache@v6
+              with:
+                path: ~/.cache/sbt/v2
+                key: sbt2-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/**', 'src/**') }}
+                restore-keys: sbt2-${{ runner.os }}-
             - name: Compile (main & tests)
               shell: bash
               run: sbt 'compile; Test / compile'

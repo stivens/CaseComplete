@@ -1,18 +1,16 @@
-import xerial.sbt.Sonatype.sonatypeCentralHost
-
 inThisBuild(
   List(
     organization := "io.github.stivens",
     version      := "0.3.0",
     scalaVersion := "3.3.8",
     homepage     := Some(url("https://github.com/stivens/CaseComplete")),
-    scmInfo := Some(
+    scmInfo      := Some(
       ScmInfo(
         url("https://github.com/stivens/CaseComplete"),
         "scm:git@github.com:stivens/CaseComplete.git"
       )
     ),
-    licenses := Seq("MIT" -> url("https://github.com/stivens/CaseComplete/blob/main/LICENSE")),
+    licenses   := Seq("MIT" -> url("https://github.com/stivens/CaseComplete/blob/main/LICENSE")),
     developers := List(
       Developer(
         id = "stivens",
@@ -21,9 +19,8 @@ inThisBuild(
         url = url("https://github.com/stivens")
       )
     ),
-    versionScheme          := Some("early-semver"),
-    semanticdbEnabled      := true,
-    sonatypeCredentialHost := sonatypeCentralHost
+    versionScheme     := Some("early-semver"),
+    semanticdbEnabled := true
   )
 )
 
@@ -31,10 +28,8 @@ lazy val casecomplete = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("."))
   .settings(
-    name := "CaseComplete",
-    // sonatypePublishToBundle is defined per project by sbt-sonatype, so this cannot join
-    // sonatypeCredentialHost in inThisBuild.
-    publishTo := sonatypePublishToBundle.value,
+    name      := "CaseComplete",
+    publishTo := localStaging.value,
     scalacOptions ++= Seq(
       "-Wunused:imports",
       "-feature",
@@ -44,10 +39,15 @@ lazy val casecomplete = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "128",
       "-Xfatal-warnings"
     ),
-    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % Test,
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
     // Empty only while the next release is an intentional new binary-compatibility baseline.
-    // Once 1.0.0 ships, set: Set(organization.value %%% moduleName.value % "1.0.0")
+    // Once 1.0.0 ships, set: Set(organization.value %% moduleName.value % "1.0.0")
     mimaPreviousArtifacts := Set.empty
+  )
+  .nativeSettings(
+    // test-interface declares a strict scheme, but Scala Native keeps 0.5.x binary compatible;
+    // without this, scalatest's older 0.5.x pin is a fatal eviction under sbt 2.
+    libraryDependencySchemes += "org.scala-native" % s"test-interface_${ScalaNativePlatform}_${scalaBinaryVersion.value}" % VersionScheme.Always
   )
 
 // The CrossType.Pure platform projects live in ./.jvm, ./.js and ./.native and share ./src;
