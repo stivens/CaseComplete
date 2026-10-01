@@ -24,13 +24,6 @@ jobs:
                 cache: 'sbt'
             - name: Setup SBT
               uses: sbt/setup-sbt@v1
-            # setup-java's sbt cache covers dependencies only, not sbt 2's content-addressed task cache.
-            - name: Cache sbt 2 task outputs
-              uses: actions/cache@v6
-              with:
-                path: ~/.cache/sbt/v2
-                key: sbt2-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/**', 'src/**') }}
-                restore-keys: sbt2-${{ runner.os }}-
             - name: Compile (main & tests)
               shell: bash
               run: sbt 'compile; Test / compile'
