@@ -40,9 +40,7 @@ lazy val casecomplete = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "-Xfatal-warnings"
     ),
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
-    // Empty only while the next release is an intentional new binary-compatibility baseline.
-    // Once 1.0.0 ships, set: Set(organization.value %% moduleName.value % "1.0.0")
-    mimaPreviousArtifacts := Set.empty
+    mimaPreviousArtifacts := Set((organization.value % moduleName.value % "1.0.0").cross(crossVersion.value))
   )
   .nativeSettings(
     // test-interface declares a strict scheme, but Scala Native keeps 0.5.x binary compatible;
