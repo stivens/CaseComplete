@@ -64,6 +64,13 @@ class ExternalAccessSpec extends AnyFunSpec with CompileErrorAssertions {
         "handlers"
       )
     }
+
+    it("should not expose the ordered handlers") {
+      assertInaccessible(
+        """CaseComplete.build[Filter, Option[String]].orderedHandlers(List("a", "b"))""",
+        "orderedHandlers"
+      )
+    }
   }
 
   private inline def assertInaccessible(inline code: String, member: String): Unit =
