@@ -1,7 +1,7 @@
 inThisBuild(
   List(
     organization := "io.github.stivens",
-    version      := "0.3.0",
+    version      := "1.0.0",
     scalaVersion := "3.3.8",
     homepage     := Some(url("https://github.com/stivens/CaseComplete")),
     scmInfo      := Some(
