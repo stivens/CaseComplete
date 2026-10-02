@@ -1,0 +1,154 @@
+:root {
+  --cc-proof: #0f8b8d;
+  --cc-error: #c8102e;
+  --cc-muted: #5b6178;
+  --cc-rule: #dfe2ee;
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #1b1e3f;
+  --md-primary-fg-color--dark: #10122a;
+  --md-accent-fg-color: var(--cc-proof);
+  --md-default-bg-color: #f7f8fc;
+  --md-default-fg-color--light: var(--cc-muted);
+  --md-typeset-a-color: #0b7476;
+  --md-code-bg-color: #eef0f7;
+}
+
+[data-md-color-scheme="slate"] {
+  --cc-proof: #3cc6c1;
+  --cc-error: #ff6b7d;
+  --cc-muted: #a3a8c3;
+  --cc-rule: #2b2f55;
+  --md-primary-fg-color: #171a36;
+  --md-primary-fg-color--dark: #0e1024;
+  --md-primary-bg-color: #e6e8f5;
+  --md-accent-fg-color: var(--cc-proof);
+  --md-default-bg-color: #12142b;
+  --md-default-fg-color: #e6e8f5;
+  --md-typeset-a-color: #5fd4cf;
+  --md-code-bg-color: #1b1e3f;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button {
+  color: var(--cc-proof);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary {
+  background-color: var(--cc-proof);
+  border-color: var(--cc-proof);
+  color: #0e1024;
+}
+
+.md-typeset .md-button:focus-visible {
+  outline: 2px solid var(--cc-proof);
+  outline-offset: 2px;
+}
+
+.md-content__inner:has(.cc-hero) > .md-content__button {
+  display: none;
+}
+
+.cc-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+  padding: 1.5rem 0 2.5rem;
+}
+
+@media screen and (min-width: 60em) {
+  .cc-hero {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    gap: 3rem;
+    padding-top: 2.5rem;
+  }
+}
+
+.md-typeset .cc-hero h1 {
+  margin: 0 0 1rem;
+  color: var(--md-default-fg-color);
+  font-size: clamp(1.9rem, 4.2vw, 2.7rem);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+}
+
+.md-typeset .cc-hero__pitch > p {
+  max-width: 34em;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.md-typeset .cc-hero__pitch .md-button {
+  margin: 0.3rem 0.4rem 0.3rem 0;
+}
+
+/* The proof block's only comments are the compiler's error, so they read as one. */
+.md-typeset .cc-hero__proof pre > code {
+  border-left: 3px solid var(--cc-error);
+  white-space: pre-wrap;
+}
+
+.md-typeset .cc-hero__proof .highlight .c1 {
+  color: var(--cc-error);
+  font-style: normal;
+}
+
+.md-typeset .cc-caption {
+  margin-top: 0.4rem;
+  color: var(--cc-muted);
+  font-size: 0.68rem;
+}
+
+.cc-section {
+  padding: 2.5rem 0 0.5rem;
+  border-top: 1px solid var(--cc-rule);
+}
+
+.md-typeset .cc-section > h2 {
+  margin-top: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.md-typeset .cc-section > p:not(:has(.cc-demo)) {
+  max-width: 40em;
+}
+
+.cc-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 0 2rem;
+}
+
+.md-typeset .cc-demo {
+  display: block;
+  width: 100%;
+  border-radius: 0.3rem;
+  box-shadow: 0 0 0 1px var(--cc-rule);
+}
+
+.cc-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.5rem 2rem;
+}
+
+.md-typeset .cc-features h3 {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.8rem 0 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.md-typeset .cc-features h3 .twemoji {
+  color: var(--cc-proof);
+}
+
+.md-typeset .cc-features p {
+  margin: 0;
+  color: var(--cc-muted);
+}

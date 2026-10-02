@@ -1,0 +1,70 @@
+site_name: CaseComplete
+site_url: https://stivens.github.io/CaseComplete/
+site_description: A Scala 3 library that fails compilation when a case class field has no handler.
+repo_url: https://github.com/stivens/CaseComplete
+repo_name: stivens/CaseComplete
+edit_uri: edit/main/website/docs/
+copyright: Released under the MIT License.
+
+# The sources in docs/ are mdoc input; mkdocs builds from mdoc's output (`sbt docs/mdoc`).
+docs_dir: target/mdoc
+site_dir: target/site
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.footer
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+
+extra_css:
+  - assets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Docs:
+      - Getting started: getting-started.md
+      - Why not pattern matching?: why.md
+      - API reference: api.md
+      - Type aliases: recipes.md
+      - Compatibility: compatibility.md

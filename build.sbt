@@ -1,3 +1,5 @@
+val latestRelease = "1.0.1"
+
 inThisBuild(
   List(
     organization := "io.github.stivens",
@@ -40,7 +42,7 @@ lazy val casecomplete = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "-Xfatal-warnings"
     ),
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
-    mimaPreviousArtifacts := Set((organization.value % moduleName.value % "1.0.0").cross(crossVersion.value))
+    mimaPreviousArtifacts := Set((organization.value % moduleName.value % latestRelease).cross(crossVersion.value))
   )
   .nativeSettings(
     // test-interface declares a strict scheme, but Scala Native keeps 0.5.x binary compatible;
@@ -60,4 +62,17 @@ lazy val root = project
     mimaPreviousArtifacts                := Set.empty,
     Compile / unmanagedSourceDirectories := Nil,
     Test / unmanagedSourceDirectories    := Nil
+  )
+
+// Not aggregated by root: building the site is the docs workflow's job, not `sbt test`'s.
+lazy val docs = project
+  .in(file("website"))
+  .enablePlugins(MdocPlugin)
+  .dependsOn(casecomplete.jvm)
+  .settings(
+    // mkdocs.yml's docs_dir points here, so it can't follow sbt 2's target/out/... layout.
+    mdocOut        := baseDirectory.value / "target" / "mdoc",
+    mdocIn         := baseDirectory.value / "docs",
+    mdocVariables  := Map("VERSION" -> latestRelease),
+    libraryDependencies += "org.tpolecat" %% "doobie-core" % "1.0.0-RC12"
   )
