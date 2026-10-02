@@ -196,7 +196,7 @@ object CaseCompleteBuilder {
 
     val selector = field.asTerm.underlyingArgument
     def abort: Nothing =
-      report.errorAndAbort(s"Illegal expression: ${selector.show}, expected a field selector, e.g. `_.foo`")
+      report.errorAndAbort(s"Illegal expression: ${selector.show(using Printer.TreeShortCode)}, expected a field selector, e.g. `_.foo`")
 
     // The receiver must be the lambda's own parameter: accepting any Select would let `_.a.b`
     // register the *source type's* field "b" and silently defeat the completeness check.
@@ -224,17 +224,19 @@ object CaseCompleteBuilder {
 
     val missingFields = caseClassFields.diff(handledFields)
 
-    if missingFields.nonEmpty then report.errorAndAbort(s"""
-        |CaseComplete compilation failed: Missing handlers for ${missingFields.size} field(s) in class ${Type.show[SOURCE_TYPE]}.
+    if missingFields.nonEmpty then {
+      val sourceType = TypeRepr.of[SOURCE_TYPE].show(using Printer.TypeReprShortCode)
+      report.errorAndAbort(s"""CaseComplete compilation failed: Missing handlers for ${missingFields.size} field(s) in class $sourceType.
         |
         |Missing handlers for fields: ${missingFields.mkString(", ")}
         |
         |To fix this, add handlers for the missing fields.
         |Example:
-        |  CaseCompleteBuilder[${Type.show[SOURCE_TYPE]}, ?]
+        |  CaseComplete.build[$sourceType, ?]
         |    .using(_.${missingFields.head})(value => /* your handler logic */)
         |    // ... other handlers
-        |    .compile""")
+        |    .compile""".stripMargin)
+    }
 
     val fieldOrder = caseClassFields ++ handledFields.diff(caseClassFields)
 
