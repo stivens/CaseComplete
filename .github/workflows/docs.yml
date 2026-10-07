@@ -1,0 +1,71 @@
+name: Docs
+
+on:
+    push:
+      branches:
+        - main
+      paths: &docs-paths
+        - 'website/**'
+        - 'src/main/**'
+        - 'build.sbt'
+        - 'project/**'
+        - '.github/workflows/docs.yml'
+    pull_request:
+      paths: *docs-paths
+
+concurrency:
+    group: docs-${{ github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+    build:
+        name: Build the documentation site
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@v7
+            - name: Setup JDK 21, Scala, SBT
+              uses: actions/setup-java@v6
+              with:
+                distribution: 'temurin'
+                java-version: '21'
+                cache: 'sbt'
+                # Differs from ci.yml's key on purpose: a shared key is saved once, by whichever workflow finishes first.
+                cache-dependency-path: |
+                  **/*.sbt
+                  project/**
+                  .github/workflows/docs.yml
+            - name: Setup SBT
+              uses: sbt/setup-sbt@v1
+            - name: Type-check snippets (mdoc)
+              shell: bash
+              run: sbt docs/mdoc
+            - uses: actions/setup-python@v7
+              with:
+                python-version: '3.13'
+                cache: 'pip'
+                cache-dependency-path: website/requirements.txt
+            - name: Build site (MkDocs)
+              shell: bash
+              run: |
+                pip install -r website/requirements.txt
+                mkdocs build --strict -f website/mkdocs.yml
+            - if: github.event_name == 'push'
+              uses: actions/upload-pages-artifact@v5
+              with:
+                path: website/target/site
+
+    deploy:
+        name: Deploy to GitHub Pages
+        if: github.event_name == 'push'
+        needs: build
+        runs-on: ubuntu-latest
+        permissions:
+            pages: write
+            id-token: write
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - id: deployment
+              uses: actions/deploy-pages@v5
