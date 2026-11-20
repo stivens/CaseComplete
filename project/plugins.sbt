@@ -6,7 +6,7 @@ addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.14.10")
 
 addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.4.0")
 
-addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.22.0")
+addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.23.0")
 
 addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.12")
 
